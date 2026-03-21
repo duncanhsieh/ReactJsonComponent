@@ -18,7 +18,7 @@ const FallbackUI: React.FC<{ error?: Error | null }> = ({ error }) => (
       fontSize: '14px',
     }}
   >
-    <strong>NextJsonComponent 渲染錯誤</strong>
+    <strong>ReactJsonComponent 渲染錯誤</strong>
     {error && (
       <pre style={{ marginTop: '8px', whiteSpace: 'pre-wrap', fontSize: '12px' }}>
         {error.message}
@@ -44,7 +44,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
-    console.error('[NextJsonComponent] Render error caught by ErrorBoundary:', error, errorInfo);
+    console.error('[ReactJsonComponent] Render error caught by ErrorBoundary:', error, errorInfo);
   }
 
   render(): React.ReactNode {

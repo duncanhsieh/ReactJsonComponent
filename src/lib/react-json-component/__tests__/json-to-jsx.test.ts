@@ -208,4 +208,23 @@ describe('Round-trip: jsonToJsx output is parseable by jsxToJson', () => {
     // data-test must survive round-trip
     expect(recoveredAst.props?.['data-test']).toBe('1');
   });
+
+  it('round-trips a node with contextName', async () => {
+    const { jsxToJson } = await import('../converters/jsx-to-json');
+
+    const original: JsonASTNode = {
+      type: 'ThemeProvider',
+      contextName: 'theme',
+      props: { value: 'dark' },
+    };
+
+    const jsx = jsonToJsx(original);
+    // Should emit <ThemeProvider contextName="theme" value="dark" />
+    expect(jsx).toContain('contextName="theme"');
+
+    const recovered = jsxToJson(jsx) as JsonASTNode;
+    expect(recovered.type).toBe('ThemeProvider');
+    expect(recovered.contextName).toBe('theme');
+    expect(recovered.props?.value).toBe('dark');
+  });
 });

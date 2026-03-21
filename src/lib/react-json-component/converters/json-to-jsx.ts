@@ -1,7 +1,7 @@
 /**
  * json-to-jsx.ts
  *
- * Converts a NextJsonComponent JSON AST back into JSX source code.
+ * Converts a ReactJsonComponent JSON AST back into JSX source code.
  *
  * This is useful for:
  *   - Developer tooling: inspect/debug JSON templates as readable JSX
@@ -90,7 +90,6 @@ function renderNode(
     const itemVar = node.$as ?? 'item';
     const indexVar = node.$indexAs ?? 'index';
     const eachExpr = stripBraces(node.$each);
-    const keyExpr = node.$key ? stripBraces(node.$key) : `\`item_\${${indexVar}}\``;
     return (
       `${indent}{(${eachExpr}).map((${itemVar}, ${indexVar}) => (\n` +
       `${innerIndent}${inner.trimStart()}\n` +
@@ -127,6 +126,11 @@ function renderRawNode(
   if (hasEach && hasKey) {
     const keyExpr = stripBraces(node.$key!);
     propStrings.push(`key={${keyExpr}}`);
+  }
+
+  // Support contextName
+  if (node.contextName !== undefined) {
+    propStrings.push(`contextName="${node.contextName}"`);
   }
 
   for (const [propName, propValue] of Object.entries(props)) {

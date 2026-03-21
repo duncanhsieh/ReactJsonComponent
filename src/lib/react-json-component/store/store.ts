@@ -1,7 +1,7 @@
 /**
  * store.ts
  *
- * Scoped Zustand store factory for NextJsonComponent.
+ * Scoped Zustand store factory for ReactJsonComponent.
  * Each component instance gets its own independent store,
  * preventing state leakage between sibling components.
  *
@@ -18,7 +18,7 @@ import { immer } from 'zustand/middleware/immer';
 import type { SetStateFn, ScopedStoreState } from '../types';
 
 /**
- * Creates an independent Zustand store for a single NextJsonComponent instance.
+ * Creates an independent Zustand store for a single ReactJsonComponent instance.
  *
  * @param initialState - The starting state values.
  * @returns A Zustand `useStore` hook bound to the scoped store.

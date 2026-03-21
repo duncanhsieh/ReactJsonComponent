@@ -40,6 +40,12 @@ export interface JsonASTNode {
   /** Child nodes or text strings. */
   children?: (JsonASTNode | string)[];
 
+  /**
+   * (New) Registers this node's `props.value` into the AST's context space.
+   * Allows children to access it via `{{ context.YOUR_CONTEXT_NAME }}`.
+   */
+  contextName?: string;
+
   // --- Directives -----------------------------------------------------------
 
   /** Conditional rendering expression, e.g. "{{ state.show }}". */
@@ -116,9 +122,9 @@ export interface ScopedStoreState extends Record<string, unknown> {
 // ---------------------------------------------------------------------------
 
 /**
- * Options passed to NextJsonComponent (and internally to the hydrator).
+ * Options passed to ReactJsonComponent (and internally to the hydrator).
  */
-export interface NextJsonComponentOptions {
+export interface ReactJsonComponentOptions {
   /** External React components available in the JSON template. */
   components?: Record<string, ComponentType<Record<string, unknown>>>;
   /** Action registry: pre-registered functions keyed by name. */
@@ -147,9 +153,11 @@ export interface RenderContext {
   state: Record<string, unknown>;
   setState: SetStateFn;
   props: Record<string, unknown>;
-  options: NextJsonComponentOptions;
+  options: ReactJsonComponentOptions;
   /** Extra variables injected by $each iteration (item, index, etc.) */
   loopVars?: Record<string, unknown>;
+  /** (New) Stores the active contexts available to current node / children */
+  contexts?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------

@@ -21,7 +21,7 @@ import React, { useMemo, useRef, useEffect } from 'react';
 import type {
   JsonASTNode,
   AnalyzedNode,
-  NextJsonComponentOptions,
+  ReactJsonComponentOptions,
   RenderContext,
 } from '../types';
 import { createScopedStore } from '../store/store';
@@ -41,7 +41,7 @@ export interface ReactJsonRendererProps {
    * Note: `serverActions` is not supported in React-only mode.
    * Use `actionRegistry` for all action handling.
    */
-  options: Omit<NextJsonComponentOptions, 'serverActions' | '_onStoreReady'>;
+  options: Omit<ReactJsonComponentOptions, 'serverActions' | '_onStoreReady'>;
   /** Props passed from the consumer, accessible via `{{ props.xxx }}` in templates. */
   componentProps?: Record<string, unknown>;
 }
@@ -84,7 +84,7 @@ export const ReactJsonRenderer: React.FC<ReactJsonRendererProps> = React.memo(
         state,
         setState: state.setState,
         props: componentProps,
-        options: options as NextJsonComponentOptions,
+        options: options as ReactJsonComponentOptions,
       }),
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [state, componentProps, options],

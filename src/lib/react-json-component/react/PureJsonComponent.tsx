@@ -9,7 +9,7 @@
  *   - Pass through children via the `{ "type": "$slot" }` node
  *
  * The produced component can be used in `options.components` of both
- * `ReactJsonRenderer` and `NextJsonComponent`.
+ * `ReactJsonRenderer` and `ReactJsonComponent`.
  *
  * Usage:
  *   const Title = PureJsonComponent(
@@ -60,7 +60,7 @@ export function PureJsonComponent(
   // Pre-analyze the template once at factory time.
   const analyzedTemplate = analyzeTree(template);
 
-  const noop = () => {};
+  const noop = () => { };
 
   function Component(props: Record<string, unknown>) {
     const ctx: RenderContext = {

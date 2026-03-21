@@ -42,7 +42,7 @@ export function generateKey(
   } catch {
     // 3. Fallback to index — logged so developers know this is happening
     console.warn(
-      `[NextJsonComponent] Could not hash list item at index ${index}. ` +
+      `[ReactJsonComponent] Could not hash list item at index ${index}. ` +
         `Falling back to index key. Consider adding a $key to your $each node.`,
     );
     return `__index_${index}`;

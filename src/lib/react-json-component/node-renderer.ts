@@ -66,7 +66,7 @@ function renderEach(node: AnalyzedNode, ctx: RenderContext): React.ReactNode {
 
   if (!Array.isArray(items)) {
     console.warn(
-      `[NextJsonComponent] $each expression did not resolve to an array. ` +
+      `[ReactJsonComponent] $each expression did not resolve to an array. ` +
         `Got: ${typeof items}. Expression: ${node.$each}`,
     );
     return null;
@@ -127,8 +127,20 @@ function renderSingleNode(
     resolvedProps.key = key;
   }
 
-  // Render children
-  const children = renderChildren(node.children ?? [], ctx);
+  // --- Create branched RenderContext if this node provides a context ---
+  let childCtx = ctx;
+  if (node.contextName && 'value' in resolvedProps) {
+    childCtx = {
+      ...ctx,
+      contexts: {
+        ...(ctx.contexts ?? {}),
+        [node.contextName]: resolvedProps.value,
+      },
+    };
+  }
+
+  // Render children using branch ctx
+  const children = renderChildren(node.children ?? [], childCtx);
 
   if (children.length === 0) {
     return React.createElement(componentType, resolvedProps);
@@ -171,7 +183,7 @@ function resolveNodeProps(
 }
 
 function resolveSingleProp(
-  key: string,
+  _key: string,
   value: JsonPropValue,
   ctx: RenderContext,
 ): unknown {

@@ -1,14 +1,14 @@
-# NextJsonComponent — React Usage Guide
+# ReactJsonComponent — React Usage Guide
 
 [繁體中文版](./README.zh-TW.md)
 
-> **Target audience**: AI Code Agents and developers who want to use `NextJsonComponent` in a **pure React** environment (Vite, CRA, admin dashboards, etc.) without any Next.js dependency.
+> **Target audience**: AI Code Agents and developers who want to use `ReactJsonComponent` in a **pure React** environment (Vite, CRA, admin dashboards, etc.) without any Next.js dependency.
 
 ---
 
 ## 1. Overview
 
-`NextJsonComponent` is a **JSON AST → React UI** rendering engine. You describe a UI as a plain JSON object (the AST), hand it to `ReactJsonRenderer`, and it renders the component tree. No JSX required at runtime.
+`ReactJsonComponent` is a **JSON AST → React UI** rendering engine. You describe a UI as a plain JSON object (the AST), hand it to `ReactJsonRenderer`, and it renders the component tree. No JSX required at runtime.
 
 **The core mental model:**
 
@@ -56,6 +56,7 @@ interface JsonASTNode {
   children?: (JsonASTNode | string)[];             // Nested nodes or text strings
 
   // Directives
+  contextName?: string; // Expose component props as {{ context.name }} to AST children
   $if?: string;    // Conditional rendering: "{{ expr }}"
   $each?: string;  // List rendering:        "{{ expr }}"
   $key?: string;   // Stable key for each item
@@ -129,7 +130,10 @@ Template expressions use double curly braces. They are evaluated by a **safe exp
 | `{{ index }}` | Loop index (inside `$each`) |
 | `{{ state.count > 0 ? 'positive' : 'zero' }}` | Ternary |
 | `{{ state.items.length }}` | Property access |
+| `{{ () => { setState({ c: Math.abs(-1) }); } }}` | Safe function definitions (for inline event callbacks) |
 | `Hello {{ state.name }}!` | String interpolation (mixed) |
+
+**Function Expressions**: `{{ () => { ... } }}` definitions are evaluated safely. They have access to `state`, `props`, `setState`, and any `context` available. They are ideal for inline event callbacks when you don't need a full action registry function.
 
 **Type preservation**: A standalone `{{ expr }}` returns the raw value (boolean, number, object). Mixed strings (with surrounding text) are stringified.
 
@@ -168,16 +172,22 @@ import type { ActionRegistry } from 'next-json-component/react';
 
 const registry: ActionRegistry = {
   // (state, setState, props, ...args, ...eventArgs) => void | Promise<void>
-  increment: (state, setState) => {
-    setState({ count: (state.count as number) + 1 });
+  
+  // 1. Immer draft mutation (auto-provided by immer middleware)
+  increment: (_state, setState) => {
+    setState((draft) => {
+      (draft.count as number)++;
+    });
   },
 
+  // 2. Classic state partial
   reset: (_state, setState) => {
     setState({ count: 0 });
   },
 
-  setName: (state, setState, props, newName) => {
-    setState({ name: newName });
+  // 3. Callback returning partial
+  setName: (_state, setState, _props, newName) => {
+    setState((prev) => ({ name: newName as string }));
   },
 };
 ```
@@ -317,7 +327,51 @@ Template usage:
 
 ---
 
-## 10. CMS Component Factories
+## 10. Context Providers (`contextName`)
+
+You can share values across deeply nested components in the JSON AST without prop drilling. This acts as a bridge between React's underlying `useContext` and the JSON evaluator.
+
+When an AST node declares a `contextName`, its `props.value` is placed into the `{{ context.xxx }}` namespace for all of its children. This perfectly couples with React Context Providers provided in `options.components`:
+
+```tsx
+import { createContext } from 'react';
+import { ReactJsonRenderer } from 'next-json-component/react';
+
+export const ThemeContext = createContext('light');
+
+const ThemeProvider = ({ value, children }) => (
+  <ThemeContext.Provider value={value}>
+    {children}
+  </ThemeContext.Provider>
+);
+
+const App = () => (
+  <ReactJsonRenderer
+    template={{
+      type: "ThemeProvider",
+      contextName: "theme",
+      props: { value: "dark" },
+      children: [
+        {
+          type: "div",
+          props: { className: "{{ context.theme === 'dark' ? 'bg-black' : 'bg-white' }}" },
+          children: ["The current theme is {{ context.theme }}"]
+        }
+      ]
+    }}
+    options={{ components: { ThemeProvider } }}
+  />
+);
+```
+
+**Why this is powerful:**
+1. The JSON template uses `{{ context.theme }}` to safely read the value.
+2. If the `ThemeProvider` renders a native React Component inside its `$slot` (or via `children`), those native components can call `useContext(ThemeContext)` and receive the exact same value. Zero disjointing!
+3. Context values branch securely downstream: sibling nodes remain perfectly isolated!
+
+---
+
+## 11. CMS Component Factories
 
 ### `PureJsonComponent` — Stateless Factory
 
@@ -479,7 +533,7 @@ export function App() {
 
 ---
 
-## 11. Full Working Example — Counter + Todo
+## 12. Full Working Example — Counter + Todo
 
 ```tsx
 import { ReactJsonRenderer } from 'next-json-component/react';
@@ -561,7 +615,7 @@ export function App() {
         initialState: {
           count: 0,
           todos: [
-            { id: '1', text: 'Learn NextJsonComponent' },
+            { id: '1', text: 'Learn ReactJsonComponent' },
             { id: '2', text: 'Build something cool' },
           ],
         },
@@ -575,7 +629,7 @@ export function App() {
 
 ---
 
-## 12. JSX ↔ JSON Converters
+## 13. JSX ↔ JSON Converters
 
 The library ships two-way converters for development workflow:
 
@@ -596,7 +650,7 @@ const jsx = jsonToJsx(ast);
 
 ---
 
-## 13. Type Reference
+## 14. Type Reference
 
 ```typescript
 // Core types (all exported from 'next-json-component/react' and 'next-json-component')
@@ -605,6 +659,8 @@ interface JsonASTNode {
   type: string;
   props?: Record<string, JsonPropValue>;
   children?: (JsonASTNode | string)[];
+  
+  contextName?: string;
   $if?: string;
   $each?: string;
   $key?: string;
@@ -632,7 +688,7 @@ type SetStateFn = (
        | ((state: Record<string, unknown>) => Partial<Record<string, unknown>>)
 ) => void;
 
-interface NextJsonComponentOptions {
+interface ReactJsonComponentOptions {
   components?: Record<string, ComponentType<Record<string, unknown>>>;
   actionRegistry?: ActionRegistry;
   initialState?: Record<string, unknown>;
@@ -642,7 +698,7 @@ interface NextJsonComponentOptions {
 
 ---
 
-## 14. Architecture Summary
+## 15. Architecture Summary
 
 ```
 Consumer (React/Vite app)

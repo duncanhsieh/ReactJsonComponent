@@ -1,14 +1,14 @@
-# NextJsonComponent — React 使用指南
+# ReactJsonComponent — React 使用指南
 
 [English Version](./README.md)
 
-> **對象讀者**：AI 代碼代理 (AI Code Agents) 以及希望在 **純 React** 環境（Vite、CRA、管理後台等）中使用 `NextJsonComponent` 且不依賴 Next.js 的開發者。
+> **對象讀者**：AI 代碼代理 (AI Code Agents) 以及希望在 **純 React** 環境（Vite、CRA、管理後台等）中使用 `ReactJsonComponent` 且不依賴 Next.js 的開發者。
 
 ---
 
 ## 1. 概覽
 
-`NextJsonComponent` 是一個將 **JSON AST 轉換為 React UI** 的渲染引擎。你將 UI 描述為一個純 JSON 物件 (AST)，將其交給 `ReactJsonRenderer`，它就會渲染出對應的組件樹。運行時不需要 JSX。
+`ReactJsonComponent` 是一個將 **JSON AST 轉換為 React UI** 的渲染引擎。你將 UI 描述為一個純 JSON 物件 (AST)，將其交給 `ReactJsonRenderer`，它就會渲染出對應的組件樹。運行時不需要 JSX。
 
 **核心模型：**
 
@@ -56,6 +56,7 @@ interface JsonASTNode {
   children?: (JsonASTNode | string)[];             // 巢狀節點或純文字字串
 
   // 指令 (Directives)
+  contextName?: string; // 註冊此節點的 context，供底下的 JSON 子節點透過 {{ context.name }} 存取
   $if?: string;    // 條件渲染: "{{ expr }}"
   $each?: string;  // 列表渲染: "{{ expr }}"
   $key?: string;   // 每個項目的穩定 Key
@@ -129,7 +130,10 @@ import { ReactJsonRenderer } from 'next-json-component/react';
 | `{{ index }}` | 迴圈索引 (在 `$each` 內部) |
 | `{{ state.count > 0 ? '正數' : '零' }}` | 三元運算 |
 | `{{ state.items.length }}` | 屬性存取 |
+| `{{ () => { setState({ c: Math.abs(-1) }); } }}` | 函式定義（安全地綁定內聯事件回呼） |
 | `你好 {{ state.name }}!` | 字串插值 (混合文字) |
+
+**函式運算式 (Function Expressions)**: 支援定義如 `{{ () => { ... } }}` 的邏輯並安全的計算。函式內可直接存取 `state`, `props`, `setState`, 以及當前的 `context` 等變數。這對於不需要建立冗長 Action API 的基本內聯操作非常便利。
 
 **類型保留**：獨立的 `{{ expr }}` 會回傳原始值（布林值、數字、物件）。混合字串（包含周圍文字）則會被轉為字串。
 
@@ -168,16 +172,22 @@ import type { ActionRegistry } from 'next-json-component/react';
 
 const registry: ActionRegistry = {
   // (state, setState, props, ...args, ...eventArgs) => void | Promise<void>
-  increment: (state, setState) => {
-    setState({ count: (state.count as number) + 1 });
+  
+  // 1. Immer 草稿變更 (直接操作不用回傳值)
+  increment: (_state, setState) => {
+    setState((draft) => {
+      (draft.count as number)++;
+    });
   },
 
+  // 2. 經典的狀態合併 (傳入 Partial 物件)
   reset: (_state, setState) => {
     setState({ count: 0 });
   },
 
-  setName: (state, setState, props, newName) => {
-    setState({ name: newName });
+  // 3. 回呼回傳 Partial 物件
+  setName: (_state, setState, _props, newName) => {
+    setState((prev) => ({ name: newName as string }));
   },
 };
 ```
@@ -269,7 +279,51 @@ import { Badge } from '@/components/ui/badge';
 
 ---
 
-## 10. CMS 組件工廠
+## 10. Context 雙向支援 (`contextName`)
+
+你可以透過 Context 在深度嵌套的 JSON AST 中共享狀態，而無需手動將 Props 一層層傳遞下去。這套機制作為 React 原生 `useContext` 與內部解析器的完美橋樑。
+
+當一個 AST 節點擁有了 `contextName` 屬性時，引擎會從該節點將它的 `props.value` 轉換並綁定到後代所有元素的 `{{ context.xxx }}` 命名空間。這功能可以跟傳入 `options.components` 中的原生 React Context Provider 天衣無縫的搭配：
+
+```tsx
+import { createContext } from 'react';
+import { ReactJsonRenderer } from 'next-json-component/react';
+
+export const ThemeContext = createContext('light');
+
+const ThemeProvider = ({ value, children }) => (
+  <ThemeContext.Provider value={value}>
+    {children}
+  </ThemeContext.Provider>
+);
+
+const App = () => (
+  <ReactJsonRenderer
+    template={{
+      type: "ThemeProvider",
+      contextName: "theme",
+      props: { value: "dark" },
+      children: [
+        {
+          type: "div",
+          props: { className: "{{ context.theme === 'dark' ? 'bg-black' : 'bg-white' }}" },
+          children: ["目前套用的語系主題是 {{ context.theme }}"]
+        }
+      ]
+    }}
+    options={{ components: { ThemeProvider } }}
+  />
+);
+```
+
+**機制的好處在於：**
+1. 你的 JSON 範本可以直接下達 `{{ context.theme }}` 動態存取數值。
+2. 假使 `ThemeProvider` 內夾帶了原生 React 元件（例如藉由 `$slot` 或直接 `children` 傳進來），這些原生的 Component 依舊能直接呼叫 `useContext(ThemeContext)` 共享完全相同的值。開發體驗與原始的 React 完全零落差！
+3. Context 的值採用分支安全覆蓋：相平行的手足節點完全相互隔離獨立，絕不互相干擾！
+
+---
+
+## 11. CMS 組件工廠
 
 ### `PureJsonComponent` — 無狀態工廠
 
@@ -318,7 +372,7 @@ const Counter = createJsonComponent(
 
 ---
 
-## 11. 完整範例 — 計數器 + 待辦事項
+## 12. 完整範例 — 計數器 + 待辦事項
 
 ```tsx
 import { ReactJsonRenderer } from 'next-json-component/react';
@@ -373,7 +427,7 @@ export function App() {
         initialState: {
           count: 0,
           todos: [
-            { id: '1', text: '學習 NextJsonComponent' },
+            { id: '1', text: '學習 ReactJsonComponent' },
             { id: '2', text: '打造酷東西' },
           ],
         },
@@ -386,7 +440,7 @@ export function App() {
 
 ---
 
-## 12. JSX ↔ JSON 轉換器
+## 13. JSX ↔ JSON 轉換器
 
 本庫附帶開發流程所需的雙向轉換器：
 
@@ -407,7 +461,7 @@ const jsx = jsonToJsx(ast);
 
 ---
 
-## 13. 架構總結
+## 14. 架構總結
 
 ```
 消費者 (React/Vite 應用程式)

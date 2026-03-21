@@ -30,7 +30,7 @@ export type {
   RegistryAction,
   SetStateFn,
   ScopedStoreState,
-  NextJsonComponentOptions,
+  ReactJsonComponentOptions,
   RenderContext,
 } from '../types';
 

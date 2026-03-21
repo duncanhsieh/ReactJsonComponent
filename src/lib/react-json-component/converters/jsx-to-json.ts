@@ -1,7 +1,7 @@
 /**
  * jsx-to-json.ts
  *
- * Converts a JSX string into a NextJsonComponent JSON AST.
+ * Converts a JSX string into a ReactJsonComponent JSON AST.
  *
  * Uses Babel's parser to produce a full AST, then walks JSXElement nodes
  * to emit the JSON AST format.
@@ -150,6 +150,7 @@ function convertElement(
   if (directives.$key !== undefined) node.$key = directives.$key;
   if (directives.$as !== undefined) node.$as = directives.$as;
   if (directives.$indexAs !== undefined) node.$indexAs = directives.$indexAs;
+  if (directives.contextName !== undefined) node.contextName = directives.contextName;
 
   return node;
 }
@@ -187,11 +188,11 @@ function resolveJSXMemberExpr(expr: JSXMemberExpression): string {
 
 interface ProcessedAttributes {
   props: Record<string, JsonPropValue>;
-  directives: Partial<Pick<JsonASTNode, '$if' | '$each' | '$key' | '$as' | '$indexAs'>>;
+  directives: Partial<Pick<JsonASTNode, '$if' | '$each' | '$key' | '$as' | '$indexAs' | 'contextName'>>;
   spreadProps: Record<string, JsonPropValue>;
 }
 
-const DIRECTIVE_ATTRS = new Set(['$if', '$each', '$key', '$as', '$indexAs']);
+const DIRECTIVE_ATTRS = new Set(['$if', '$each', '$key', '$as', '$indexAs', 'contextName']);
 
 function processAttributes(
   attrs: (JSXAttribute | JSXSpreadAttribute)[],

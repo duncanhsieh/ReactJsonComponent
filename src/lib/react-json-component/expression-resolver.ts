@@ -41,6 +41,7 @@ function buildEvalContext(ctx: RenderContext): Record<string, unknown> {
     state: ctx.state,
     props: ctx.props,
     setState: ctx.setState,
+    context: ctx.contexts ?? {}, // Allows {{ context.xxx }}
     ...(ctx.loopVars ?? {}),
   };
 }
@@ -80,7 +81,7 @@ export function resolveExpression(template: string, ctx: RenderContext): unknown
       try {
         return evalFnExpression(expr, evalCtx);
       } catch (err) {
-        console.warn(`[NextJsonComponent] Function expression evaluation failed: ${
+        console.warn(`[ReactJsonComponent] Function expression evaluation failed: ${
           (err as Error).message
         }`);
         return undefined;
@@ -108,7 +109,7 @@ function safelyEval(expr: string, evalCtx: Record<string, unknown>): unknown {
     return safeEval(expr, evalCtx);
   } catch (err) {
     if (err instanceof SafeEvalError) {
-      console.warn(`[NextJsonComponent] Expression evaluation failed: ${err.message}`);
+      console.warn(`[ReactJsonComponent] Expression evaluation failed: ${err.message}`);
       return undefined;
     }
     throw err;

@@ -10,7 +10,7 @@
  * (e.g. a collapsible panel, a local counter, a tab group).
  *
  * The produced component can be used in `options.components` of both
- * `ReactJsonRenderer` and `NextJsonComponent`.
+ * `ReactJsonRenderer` and `ReactJsonComponent`.
  *
  * Usage:
  *   const Counter = createJsonComponent(
@@ -41,7 +41,7 @@
 
 import React from 'react';
 import type { ComponentType } from 'react';
-import type { JsonASTNode, NextJsonComponentOptions } from '../types';
+import type { JsonASTNode, ReactJsonComponentOptions } from '../types';
 import { ReactJsonRenderer } from './ReactJsonRenderer';
 
 // ---------------------------------------------------------------------------
@@ -54,7 +54,7 @@ import { ReactJsonRenderer } from './ReactJsonRenderer';
  * and not applicable to a standalone component factory.
  */
 export type CreateJsonComponentOptions = Omit<
-  NextJsonComponentOptions,
+  ReactJsonComponentOptions,
   'serverActions' | '_onStoreReady'
 >;
 
