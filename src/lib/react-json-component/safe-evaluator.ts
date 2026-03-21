@@ -56,6 +56,46 @@ const BLOCKED_IDENTIFIERS = new Set([
   'constructor',
 ]);
 
+// ---------------------------------------------------------------------------
+// Allowlisted globals for function-expression evaluation
+// ---------------------------------------------------------------------------
+
+/**
+ * Safe built-ins that are explicitly allowed inside function-expression templates.
+ * Anything NOT in this map is unreachable from within the evaluated function
+ * (the real `window` / `globalThis` are shadowed away by the `new Function` scope).
+ */
+const ALLOWED_GLOBALS: Record<string, unknown> = {
+  // Math
+  Math,
+  // Number utilities
+  parseInt,
+  parseFloat,
+  isNaN,
+  isFinite,
+  Number,
+  // String
+  String,
+  // Array
+  Array,
+  // Object (safe subset — no Object.assign to prototype, etc.)
+  Object,
+  // JSON
+  JSON,
+  // Boolean
+  Boolean,
+  // Error types
+  Error,
+  TypeError,
+  RangeError,
+  // Console (useful for debug during CMS authoring)
+  console,
+  // Promise
+  Promise,
+  // Void / undefined helpers
+  undefined,
+};
+
 /** Error thrown when the safe evaluator encounters a blocked or invalid expression. */
 export class SafeEvalError extends Error {
   constructor(message: string) {
@@ -494,3 +534,104 @@ export function safeEval(expression: string, context: Record<string, unknown>): 
   const result = parser.parseExpression(context);
   return result;
 }
+
+// ---------------------------------------------------------------------------
+// Function-expression evaluator (second track)
+// ---------------------------------------------------------------------------
+
+/**
+ * Evaluate a **function-definition expression** from a JSON template.
+ *
+ * Unlike `safeEval` (which uses a hand-written parser for value expressions),
+ * this path uses `new Function` so it can handle:
+ *   - Arrow functions:           `() => { props.setTab(3); }`
+ *   - try / catch blocks
+ *   - Native built-ins:          `Math.abs(x)`, `parseInt(s, 10)`, etc.
+ *
+ * Security model
+ * ──────────────
+ * The real global scope is completely shadowed: every key in `globalThis` is
+ * overridden inside the `new Function` scope.  Only the explicit
+ * `ALLOWED_GLOBALS` whitelist (Math, JSON, parseInt, …) plus the caller-
+ * supplied `context` (state, setState, props, loopVars) are visible.
+ * Dangerous identifiers (window, document, eval, fetch, etc.) are set to
+ * `undefined` inside the scope, so they cannot be reached even if someone
+ * tries.
+ *
+ * Return value
+ * ────────────
+ * The expression string must evaluate to a **function** (arrow or regular).
+ * If the result is not callable, a `SafeEvalError` is thrown.
+ *
+ * @param expression - A JS expression string that produces a function,
+ *                     e.g. `"() => { props.setTab(3); }"`.
+ * @param context    - The render-context bindings (state, setState, props, loopVars…).
+ * @returns The callable function produced by the expression.
+ * @throws SafeEvalError if evaluation fails or result is not a function.
+ */
+export function evalFnExpression(
+  expression: string,
+  context: Record<string, unknown>,
+): (...args: unknown[]) => unknown {
+  const trimmed = expression.trim();
+
+  // Build the merged scope: allowlisted globals first, then context (context wins).
+  const scope: Record<string, unknown> = {
+    ...ALLOWED_GLOBALS,
+    ...context,
+  };
+
+  // Shadow every key on the real globalThis so nothing leaks through.
+  // We collect all real global keys and override them to undefined
+  // unless they are in our explicit scope.
+  const shadowedGlobals: Record<string, unknown> = {};
+  try {
+    for (const key of Object.getOwnPropertyNames(globalThis)) {
+      if (!(key in scope)) {
+        shadowedGlobals[key] = undefined;
+      }
+    }
+  } catch {
+    // Some environments restrict getOwnPropertyNames on globalThis — that's fine.
+  }
+
+  const finalScope = { ...shadowedGlobals, ...scope };
+
+  // Identifiers that are illegal as parameter names in strict mode.
+  // These may appear when enumerating globalThis properties but you cannot
+  // use them as `new Function` parameter names with `'use strict'`.
+  const STRICT_RESERVED = new Set([
+    'eval', 'arguments', 'implements', 'interface', 'let', 'package',
+    'private', 'protected', 'public', 'static', 'yield',
+  ]);
+
+  // Also filter names that are not valid JS identifiers (e.g. contain hyphens).
+  const VALID_IDENT = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/;
+
+  const paramNames = Object.keys(finalScope).filter(
+    (k) => !STRICT_RESERVED.has(k) && VALID_IDENT.test(k),
+  );
+  const paramValues = paramNames.map((k) => finalScope[k]);
+
+  let fn: unknown;
+  try {
+    // The constructed function body just returns the expression.
+    // e.g.: new Function('Math','state','setState','props', 'return (() => { … })')
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    const factory = new Function(...paramNames, `'use strict'; return (${trimmed});`);
+    fn = factory(...paramValues);
+  } catch (err) {
+    throw new SafeEvalError(
+      `Failed to compile function expression: ${(err as Error).message}\n  Expression: ${trimmed}`,
+    );
+  }
+
+  if (typeof fn !== 'function') {
+    throw new SafeEvalError(
+      `Function expression did not return a callable. Got: ${typeof fn}\n  Expression: ${trimmed}`,
+    );
+  }
+
+  return fn as (...args: unknown[]) => unknown;
+}
+

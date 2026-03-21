@@ -93,12 +93,15 @@ export type ActionRegistry = Record<string, RegistryAction>;
 // ---------------------------------------------------------------------------
 
 /**
- * setState function — supports partial object or updater function.
+ * setState function — supports:
+ *   1. Partial object:            setState({ count: 1 })
+ *   2. Updater returning partial: setState(prev => ({ count: prev.count + 1 }))
+ *   3. Immer draft mutation:      setState(draft => { draft.count = 1; })  ← returns void
  */
 export type SetStateFn = (
   update:
     | Partial<Record<string, unknown>>
-    | ((state: Record<string, unknown>) => Partial<Record<string, unknown>>),
+    | ((state: Record<string, unknown>) => Partial<Record<string, unknown>> | void),
 ) => void;
 
 /**

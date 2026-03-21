@@ -145,7 +145,11 @@ export function createSetState(
   return (update) => {
     set((current) => {
       const partial = typeof update === 'function' ? update(current) : update;
-      return { ...current, ...partial };
+      // Works with both Immer draft (mutates in-place) and plain state.
+      if (partial !== undefined && partial !== null && typeof partial === 'object') {
+        Object.assign(current, partial);
+      }
+      return current;
     });
   };
 }

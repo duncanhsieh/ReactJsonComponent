@@ -224,6 +224,89 @@ describe('ReactJsonRenderer', () => {
     expect(container).toBeDefined();
   });
 
+  // ── Immer mutation via ActionRegistry ────────────────────────────────────
+
+  it('updates nested state via Immer draft mutation in action', () => {
+    const registry: ActionRegistry = {
+      toggleDone: (_state, setState) => {
+        setState((draft) => {
+          (draft.todo as any).done = !(draft.todo as any).done;
+        });
+      },
+    };
+
+    const template: JsonASTNode = {
+      type: 'div',
+      children: [
+        {
+          type: 'span',
+          props: { 'data-testid': 'status' },
+          children: ['{{ state.todo.done }}'],
+        },
+        {
+          type: 'button',
+          props: {
+            'data-testid': 'toggle',
+            onClick: { action: 'toggleDone' },
+          },
+          children: ['Toggle'],
+        },
+      ],
+    };
+
+    renderTemplate(template, {
+      actionRegistry: registry,
+      initialState: { todo: { text: 'Test', done: false } },
+    });
+
+    expect(screen.getByTestId('status').textContent).toBe('false');
+
+    fireEvent.click(screen.getByTestId('toggle'));
+    expect(screen.getByTestId('status').textContent).toBe('true');
+
+    fireEvent.click(screen.getByTestId('toggle'));
+    expect(screen.getByTestId('status').textContent).toBe('false');
+  });
+
+  it('pushes items to an array via Immer draft mutation', () => {
+    const registry: ActionRegistry = {
+      addItem: (_state, setState, _props, text) => {
+        setState((draft) => {
+          (draft.items as string[]).push(text as string);
+        });
+      },
+    };
+
+    const template: JsonASTNode = {
+      type: 'div',
+      children: [
+        {
+          type: 'span',
+          props: { 'data-testid': 'count' },
+          children: ['{{ state.items.length }}'],
+        },
+        {
+          type: 'button',
+          props: {
+            'data-testid': 'add',
+            onClick: { action: 'addItem', args: ['new-item'] },
+          },
+          children: ['Add'],
+        },
+      ],
+    };
+
+    renderTemplate(template, {
+      actionRegistry: registry,
+      initialState: { items: ['a', 'b'] },
+    });
+
+    expect(screen.getByTestId('count').textContent).toBe('2');
+
+    fireEvent.click(screen.getByTestId('add'));
+    expect(screen.getByTestId('count').textContent).toBe('3');
+  });
+
   // ── displayName ──────────────────────────────────────────────────────────
 
   it('has the correct displayName', () => {

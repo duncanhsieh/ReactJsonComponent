@@ -5,7 +5,7 @@
  * All actual expression evaluation is delegated to the safe-evaluator.
  */
 
-import { safeEval, SafeEvalError } from './safe-evaluator';
+import { safeEval, SafeEvalError, evalFnExpression } from './safe-evaluator';
 import type { RenderContext, JsonPropValue, ActionBinding } from './types';
 
 // Matches one or more {{ expr }} placeholders.
@@ -17,6 +17,19 @@ const EXPR_PATTERN = /\{\{\s*([\s\S]*?)\s*\}\}/g;
 export function isExpression(value: string): boolean {
   EXPR_PATTERN.lastIndex = 0;
   return EXPR_PATTERN.test(value);
+}
+
+/**
+ * Detect whether the *inner* part of a `{{ }}` block is a function definition.
+ * Matches:
+ *   - Arrow functions:   `() => expr`, `(x) => { ... }`, `x => x + 1`
+ *   - `function` keyword: `function(x) { ... }`
+ * This check is intentionally permissive — false positives are impossible
+ * because the `evalFnExpression` path will reject non-callable results.
+ */
+const FN_EXPR_PATTERN = /^\s*(async\s+)?((\([^)]*\)|[a-zA-Z_$][a-zA-Z0-9_$]*)\s*=>|function\s*\()/;
+export function isFnExpression(innerExpr: string): boolean {
+  return FN_EXPR_PATTERN.test(innerExpr);
 }
 
 /**
@@ -59,10 +72,27 @@ export function resolveExpression(template: string, ctx: RenderContext): unknown
   // Single {{ expr }} that is the ENTIRE string → preserve type
   if (matches.length === 1 && matches[0][0] === template.trim()) {
     const expr = matches[0][1];
+
+    // --- Function-definition track ---
+    // If the inner expression looks like an arrow/function definition,
+    // route it through evalFnExpression (supports try/catch, Math.*, etc.).
+    if (isFnExpression(expr)) {
+      try {
+        return evalFnExpression(expr, evalCtx);
+      } catch (err) {
+        console.warn(`[NextJsonComponent] Function expression evaluation failed: ${
+          (err as Error).message
+        }`);
+        return undefined;
+      }
+    }
+
+    // --- Standard value expression track ---
     return safelyEval(expr, evalCtx);
   }
 
   // Mixed string with multiple expressions or surrounding text
+  // (function definitions are not meaningful here, so keep old path)
   return template.replace(EXPR_PATTERN, (_, expr: string) => {
     const val = safelyEval(expr.trim(), evalCtx);
     return val != null ? String(val) : '';

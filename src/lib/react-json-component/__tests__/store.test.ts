@@ -59,3 +59,99 @@ describe('createScopedStore — setState logic', () => {
     expect(store.getState().other).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Immer-specific tests
+// ---------------------------------------------------------------------------
+
+describe('createScopedStore — Immer draft mutation', () => {
+  it('mutates a top-level draft property directly', () => {
+    const store = createScopedStore({ count: 0 });
+    store.getState().setState((draft) => {
+      draft.count = 10;
+    });
+    expect(store.getState().count).toBe(10);
+  });
+
+  it('mutates deeply nested objects via draft', () => {
+    const store = createScopedStore({
+      form: { address: { city: 'Taipei', zip: '100' } },
+    });
+
+    store.getState().setState((draft) => {
+      (draft.form as any).address.city = 'Kaohsiung';
+    });
+
+    expect((store.getState().form as any).address.city).toBe('Kaohsiung');
+    expect((store.getState().form as any).address.zip).toBe('100'); // unchanged
+  });
+
+  it('pushes to an array via draft', () => {
+    const store = createScopedStore({
+      items: [{ id: 1, text: 'first' }],
+    });
+
+    store.getState().setState((draft) => {
+      (draft.items as any[]).push({ id: 2, text: 'second' });
+    });
+
+    const items = store.getState().items as any[];
+    expect(items).toHaveLength(2);
+    expect(items[1].text).toBe('second');
+  });
+
+  it('splices an array via draft', () => {
+    const store = createScopedStore({
+      items: ['apple', 'banana', 'cherry'],
+    });
+
+    store.getState().setState((draft) => {
+      (draft.items as string[]).splice(1, 1); // remove 'banana'
+    });
+
+    const items = store.getState().items as string[];
+    expect(items).toEqual(['apple', 'cherry']);
+  });
+
+  it('finds and toggles a nested property in an array item', () => {
+    const store = createScopedStore({
+      todos: [
+        { id: 1, text: 'A', done: false },
+        { id: 2, text: 'B', done: false },
+      ],
+    });
+
+    store.getState().setState((draft) => {
+      const todo = (draft.todos as any[]).find(t => t.id === 2);
+      if (todo) todo.done = true;
+    });
+
+    const todos = store.getState().todos as any[];
+    expect(todos[0].done).toBe(false);
+    expect(todos[1].done).toBe(true);
+  });
+
+  it('Immer mutation preserves other top-level keys', () => {
+    const store = createScopedStore({ a: 1, b: 2, c: 3 });
+
+    store.getState().setState((draft) => {
+      draft.b = 99;
+    });
+
+    expect(store.getState().a).toBe(1);
+    expect(store.getState().b).toBe(99);
+    expect(store.getState().c).toBe(3);
+  });
+
+  it('sibling stores remain isolated with Immer mutation', () => {
+    const store1 = createScopedStore({ items: [1, 2, 3] });
+    const store2 = createScopedStore({ items: [10, 20, 30] });
+
+    store1.getState().setState((draft) => {
+      (draft.items as number[]).push(4);
+    });
+
+    expect((store1.getState().items as number[])).toEqual([1, 2, 3, 4]);
+    expect((store2.getState().items as number[])).toEqual([10, 20, 30]); // untouched
+  });
+});
