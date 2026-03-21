@@ -27,7 +27,6 @@
  *   />
  */
 
-import React from 'react';
 import type { ComponentType } from 'react';
 import type { JsonASTNode, RenderContext } from '../types';
 import { analyzeTree } from '../static-analyzer';

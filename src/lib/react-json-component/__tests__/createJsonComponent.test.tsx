@@ -4,7 +4,7 @@
  * Unit tests for the stateful CMS component factory (with Zustand).
  */
 
-import React from 'react';
+
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { createJsonComponent } from '../react/createJsonComponent';

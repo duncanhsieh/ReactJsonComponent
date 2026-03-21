@@ -184,7 +184,7 @@ describe('safeEval — Extreme Edge Cases', () => {
   });
 
   it('handles very long expressions correctly', () => {
-    const longString = '1 '.repeat(1000) + '+ 1';
+    // const longString = '1 '.repeat(1000) + '+ 1';
     // '1 1 1 ... + 1' -> basically evaluator trims and handles tokens.
     // Actually our simple evaluator might complain about multiple literals '1 1 1' without operators.
     // Let's do '1 + 1 + 1'

@@ -22,47 +22,43 @@ describe('generateKey — explicit $key', () => {
   });
 });
 
-describe('generateKey — hash-based keys', () => {
-  it('generates a deterministic hash for an object', () => {
+describe('generateKey — index fallback keys', () => {
+  it('generates an index-based key when explicit key is missing', () => {
     const item = { id: 1, name: 'Alice' };
     const key1 = generateKey(item, 0);
-    const key2 = generateKey(item, 0);
-    expect(key1).toBe(key2);
+    expect(key1).toBe('__index_0');
   });
 
-  it('generates different hashes for different objects', () => {
+  it('generates different fallback paths for different iterations', () => {
     const item1 = { id: 1, name: 'Alice' };
     const item2 = { id: 2, name: 'Bob' };
     expect(generateKey(item1, 0)).not.toBe(generateKey(item2, 1));
+    expect(generateKey(item1, 0)).toBe('__index_0');
+    expect(generateKey(item1, 1)).toBe('__index_1');
   });
 
-  it('handles primitive values', () => {
-    const key1 = generateKey('hello', 0);
-    const key2 = generateKey('hello', 0);
-    expect(key1).toBe(key2);
-    expect(typeof key1).toBe('string');
+  it('handles primitive values via index', () => {
+    const key1 = generateKey('hello', 4);
+    expect(key1).toBe('__index_4');
   });
 
-  it('handles number values', () => {
-    const key1 = generateKey(42, 0);
-    const key2 = generateKey(42, 0);
-    expect(key1).toBe(key2);
+  it('handles number values via index', () => {
+    const key1 = generateKey(42, 99);
+    expect(key1).toBe('__index_99');
   });
 
   it('handles null gracefully', () => {
-    const key = generateKey(null, 0);
-    expect(typeof key).toBe('string');
-    expect(key.length).toBeGreaterThan(0);
+    const key = generateKey(null, 5);
+    expect(key).toBe('__index_5');
   });
 });
 
 describe('generateKeys — batch generation', () => {
-  it('generates one key per item', () => {
+  it('generates one key per item prioritizing index when there is no explicitly passed key array', () => {
     const items = [{ id: 1 }, { id: 2 }, { id: 3 }];
     const keys = generateKeys(items);
     expect(keys).toHaveLength(3);
-    // All keys should be unique
-    expect(new Set(keys).size).toBe(3);
+    expect(keys).toEqual(['__index_0', '__index_1', '__index_2']);
   });
 
   it('uses explicit keys when provided', () => {

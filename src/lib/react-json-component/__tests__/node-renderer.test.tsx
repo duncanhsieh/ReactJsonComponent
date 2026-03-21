@@ -5,7 +5,7 @@
  * including all specified extreme edge cases.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render } from '@testing-library/react';
 import { renderNode } from '../node-renderer';
@@ -106,7 +106,7 @@ describe('node-renderer — Extreme Edge Cases: $each', () => {
   });
 
   it('handles $each bound to empty array', () => {
-    const node: AnalyzedNode = { type: 'li', $each: '[]' }; // empty array literal logic, though technically our evaluator doesn't do [] literal currently unless its in state. Let's put it in state.
+    // const node: AnalyzedNode = { type: 'li', $each: '[]' }; // empty array literal logic, though technically our evaluator doesn't do [] literal currently unless its in state. Let's put it in state.
     const ctx = { ...defaultCtx, state: { arr: [] } };
     const nodeEmpty = { type: 'li', $each: '{{ state.arr }}' };
     expect(renderNode(nodeEmpty, ctx)).toEqual([]);

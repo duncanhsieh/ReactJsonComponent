@@ -4,7 +4,7 @@
  * Tests for the framework-agnostic React JSON renderer.
  */
 
-import React from 'react';
+
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ReactJsonRenderer } from '../react/ReactJsonRenderer';

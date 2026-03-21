@@ -43,3 +43,4 @@ export {
 } from '../action-registry';
 export { safeEval, SafeEvalError } from '../safe-evaluator';
 export { resolveExpression, isExpression } from '../expression-resolver';
+export { JsonASTNodeSchema, JsonPropValueSchema, ActionBindingSchema } from '../schema';

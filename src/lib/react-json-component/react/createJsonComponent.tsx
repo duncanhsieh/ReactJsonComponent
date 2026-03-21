@@ -39,7 +39,7 @@
 
 'use client';
 
-import React from 'react';
+
 import type { ComponentType } from 'react';
 import type { JsonASTNode, ReactJsonComponentOptions } from '../types';
 import { ReactJsonRenderer } from './ReactJsonRenderer';
