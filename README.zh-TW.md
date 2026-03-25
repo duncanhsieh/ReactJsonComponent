@@ -135,6 +135,49 @@ import { ReactJsonRenderer } from 'next-json-component/react';
 
 **函式運算式 (Function Expressions)**: 支援定義如 `{{ () => { ... } }}` 的邏輯並安全的計算。函式內可直接存取 `state`, `props`, `setState`, 以及當前的 `context` 等變數。這對於不需要建立冗長 Action API 的基本內聯操作非常便利。
 
+### 動態 `type` 與 Prop Key
+
+`{{ }}` 運算式現在可以在**三個新的位置**使用，不再只有 Prop 的值：
+
+#### 1. 動態元件類型 (Dynamic type)
+
+在 JSON 模板中根據運行時的狀態決定渲染哪個元素或元件：
+
+```json
+{
+  "type": "{{ state.isInternal ? 'NavLink' : 'a' }}",
+  "props": { "href": "/home" },
+  "children": ["Home"]
+}
+```
+
+- 當 `state.isInternal` 為 `true`，渲染的是 `<NavLink href="/home">Home</NavLink>`（從 `options.components` 解析）。
+- 為 `false` 時，渲染的是原生的 `<a href="/home">Home</a>`。
+
+#### 2. 動態 Prop Key 名稱
+
+連屬性的**鍵名**也可以是運算式：
+
+```json
+{
+  "type": "div",
+  "props": {
+    "{{ state.ariaRole ? 'role' : 'data-role' }}": "{{ state.ariaRole }}"
+  }
+}
+```
+
+#### 3. 動態 className / 任意屬性值
+
+```json
+{
+  "type": "div",
+  "props": {
+    "className": "{{ state.theme === 'dark' ? 'bg-black text-white' : 'bg-white text-black' }}"
+  }
+}
+```
+
 **類型保留**：獨立的 `{{ expr }}` 會回傳原始值（布林值、數字、物件）。混合字串（包含周圍文字）則會被轉為字串。
 
 **安全性**：評估器是沙盒化的 — 禁止存取 `window`、`document`、`process`、`eval`、`Function` 以及原型鏈污染。

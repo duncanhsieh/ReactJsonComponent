@@ -18,6 +18,9 @@ import type { AnalyzedNode, RenderContext, JsonPropValue } from './types';
 import { resolveExpression, isActionBinding } from './expression-resolver';
 import { resolveHandler } from './action-registry';
 import { generateKey } from './key-generator';
+import { createNodeErrorElement } from './errors/node-error';
+
+declare const process: any;
 
 // ---------------------------------------------------------------------------
 // Main render function
@@ -116,37 +119,62 @@ function renderSingleNode(
   ctx: RenderContext,
   key?: string,
 ): React.ReactElement {
-  // Resolve component type
-  const componentType = resolveComponentType(node.type, ctx);
+  try {
+    // Resolve component type — supports {{ expr }} in `type`
+    let resolvedTypeName = node.type;
+    if (typeof node.type === 'string' && node.type.includes('{{')) {
+      const result = resolveExpression(node.type, ctx);
+      if (result === undefined || result === null) {
+        throw new Error(`Component type expression "${node.type}" resolved to ${result}`);
+      }
+      resolvedTypeName = String(result);
+    }
 
-  // Resolve props
-  const resolvedProps = resolveNodeProps(node.props ?? {}, ctx);
+    const componentType = resolveComponentType(resolvedTypeName, ctx);
 
-  // Add key
-  if (key !== undefined) {
-    resolvedProps.key = key;
+    // Defensive check: ensure componentType is valid before calling React.createElement
+    if (!componentType || (typeof componentType !== 'string' && typeof componentType !== 'function')) {
+      throw new Error(`Invalid component type resolved from "${node.type}": ${typeof componentType}`);
+    }
+
+    // If it's a string (HTML tag), ensure it's a valid tag name (starts with alpha)
+    if (typeof componentType === 'string' && !/^[a-zA-Z][a-zA-Z0-9-]*$/.test(componentType)) {
+      throw new Error(`Invalid HTML tag name: "${componentType}"`);
+    }
+
+    // Resolve props
+    const resolvedProps = resolveNodeProps(node.props ?? {}, ctx);
+
+    // Add key
+    if (key !== undefined) {
+      resolvedProps.key = key;
+    }
+
+    // --- Create branched RenderContext if this node provides a context ---
+    let childCtx = ctx;
+    if (node.contextName && 'value' in resolvedProps) {
+      childCtx = {
+        ...ctx,
+        contexts: {
+          ...(ctx.contexts ?? {}),
+          [node.contextName]: resolvedProps.value,
+        },
+      };
+    }
+
+    // Render children using branch ctx
+    const children = renderChildren(node.children ?? [], childCtx);
+
+    if (children.length === 0) {
+      return React.createElement(componentType as any, resolvedProps);
+    }
+
+    return React.createElement(componentType as any, resolvedProps, ...children);
+  } catch (err) {
+    // Per-node error isolation: Catch error and return a fallback element
+    console.error(`[ReactJsonComponent] Error rendering node (type="${node.type}"):`, err);
+    return createNodeErrorElement(node, err as Error, key);
   }
-
-  // --- Create branched RenderContext if this node provides a context ---
-  let childCtx = ctx;
-  if (node.contextName && 'value' in resolvedProps) {
-    childCtx = {
-      ...ctx,
-      contexts: {
-        ...(ctx.contexts ?? {}),
-        [node.contextName]: resolvedProps.value,
-      },
-    };
-  }
-
-  // Render children using branch ctx
-  const children = renderChildren(node.children ?? [], childCtx);
-
-  if (children.length === 0) {
-    return React.createElement(componentType, resolvedProps);
-  }
-
-  return React.createElement(componentType, resolvedProps, ...children);
 }
 
 // ---------------------------------------------------------------------------
@@ -176,7 +204,14 @@ function resolveNodeProps(
   const resolved: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(props)) {
-    resolved[key] = resolveSingleProp(key, value, ctx);
+    // Resolve prop key name if it contains {{ }}
+    const resolvedKey =
+      key.includes('{{') ? String(resolveExpression(key, ctx) ?? '') : key;
+    
+    // If the key resolved to an empty string, it's effectively an invalid prop
+    if (resolvedKey !== '') {
+      resolved[resolvedKey] = resolveSingleProp(key, value, ctx);
+    }
   }
 
   return resolved;
@@ -212,9 +247,16 @@ function renderChildren(
 ): React.ReactNode[] {
   return children.map((child, i) => {
     if (typeof child === 'string') {
-      // Resolve {{ }} in text content
-      const resolved = resolveExpression(child, ctx);
-      return String(resolved ?? '');
+      try {
+        // Resolve {{ }} in text content
+        const resolved = resolveExpression(child, ctx);
+        return String(resolved ?? '');
+      } catch (err) {
+        console.error(`[ReactJsonComponent] Error resolving text child: "${child}"`, err);
+        return process.env.NODE_ENV === 'production' 
+          ? '' 
+          : `(Error: ${(err as Error).message})`;
+      }
     }
     return renderNode(child, ctx, `child_${i}`);
   });

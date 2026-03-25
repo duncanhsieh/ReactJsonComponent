@@ -135,6 +135,49 @@ Template expressions use double curly braces. They are evaluated by a **safe exp
 
 **Function Expressions**: `{{ () => { ... } }}` definitions are evaluated safely. They have access to `state`, `props`, `setState`, and any `context` available. They are ideal for inline event callbacks when you don't need a full action registry function.
 
+### Dynamic `type` and Prop Keys
+
+`{{ }}` expressions can be used in **three additional places** beyond prop values:
+
+#### 1. Dynamic component type
+
+Decide the rendered tag or component at runtime:
+
+```json
+{
+  "type": "{{ state.isInternal ? 'NavLink' : 'a' }}",
+  "props": { "href": "/home" },
+  "children": ["Home"]
+}
+```
+
+- When `state.isInternal` is `true`, the result is `<NavLink href="/home">Home</NavLink>` (resolved from `options.components`).
+- When `false`, the result is `<a href="/home">Home</a>`.
+
+#### 2. Dynamic prop keys
+
+The prop key *name* itself can be an expression:
+
+```json
+{
+  "type": "div",
+  "props": {
+    "{{ state.ariaRole ? 'role' : 'data-role' }}": "{{ state.ariaRole }}"
+  }
+}
+```
+
+#### 3. Dynamic className / any prop value
+
+```json
+{
+  "type": "div",
+  "props": {
+    "className": "{{ state.theme === 'dark' ? 'bg-black text-white' : 'bg-white text-black' }}"
+  }
+}
+```
+
 **Type preservation**: A standalone `{{ expr }}` returns the raw value (boolean, number, object). Mixed strings (with surrounding text) are stringified.
 
 **Security**: The evaluator is sandboxed — access to `window`, `document`, `process`, `eval`, `Function`, and prototype pollution are all blocked.

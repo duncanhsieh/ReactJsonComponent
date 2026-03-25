@@ -230,3 +230,80 @@ describe('safeEval — Extreme Edge Cases', () => {
   });
 });
 
+describe('safeEval — Nullish Coalescing ??', () => {
+  it('returns right side when left side is null', () => {
+    expect(safeEval('null ?? "default"', {})).toBe('default');
+  });
+
+  it('returns right side when left side is undefined', () => {
+    expect(safeEval('undefined ?? "default"', {})).toBe('default');
+  });
+
+  it('returns left side when it is 0 (truthy in nullish check)', () => {
+    expect(safeEval('0 ?? 100', {})).toBe(0);
+  });
+
+  it('returns left side when it is empty string', () => {
+    expect(safeEval('"" ?? "fallback"', {})).toBe('');
+  });
+
+  it('returns left side when it is false', () => {
+    expect(safeEval('false ?? true', {})).toBe(false);
+  });
+});
+
+describe('safeEval — Array Literals [ ]', () => {
+  it('evaluates empty array', () => {
+    expect(safeEval('[]', {})).toEqual([]);
+  });
+
+  it('evaluates array with expressions', () => {
+    expect(safeEval('[1, 2 + 1, state.user]', ctx)).toEqual([1, 3, 'Alice']);
+  });
+
+  it('handles trailing commas', () => {
+    expect(safeEval('[1, 2, ]', {})).toEqual([1, 2]);
+  });
+});
+
+describe('safeEval — Object Literals { }', () => {
+  it('evaluates empty object', () => {
+    expect(safeEval('{}', {})).toEqual({});
+  });
+
+  it('evaluates object with static and dynamic keys', () => {
+    const objCtx = { state: { k: 'dynamicKey', v: 100 } };
+    expect(safeEval("{ a: 1, 'b': 2, [state.k]: state.v }", objCtx)).toEqual({
+      a: 1,
+      b: 2,
+      dynamicKey: 100,
+    });
+  });
+
+  it('handles nested objects', () => {
+    expect(safeEval('{ a: { b: 1 } }', {})).toEqual({ a: { b: 1 } });
+  });
+});
+
+describe('safeEval — Optional Dynamic Indexing ?.[ ]', () => {
+  it('resolves when object exists', () => {
+    expect(safeEval("state?.[ 'count' ]", ctx)).toBe(5);
+  });
+
+  it('short-circuits to undefined when object is null/undefined', () => {
+    expect(safeEval("state.notExists?.[ 'p' ]", ctx)).toBeUndefined();
+    expect(safeEval("null?.[ 'p' ]", {})).toBeUndefined();
+  });
+});
+
+describe('safeEval — Comments //', () => {
+  it('skips comments', () => {
+    const expr = `
+      // This is a comment
+      state.count + // add one
+      1
+    `;
+    expect(safeEval(expr, ctx)).toBe(6);
+  });
+});
+

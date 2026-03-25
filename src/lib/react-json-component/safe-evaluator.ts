@@ -118,11 +118,15 @@ type TokenType =
   | 'RPAREN'
   | 'LBRACKET'
   | 'RBRACKET'
+  | 'LBRACE'
+  | 'RBRACE'
   | 'DOT'
   | 'OPTIONAL_DOT'
+  | 'OPTIONAL_LBRACKET'
   | 'COMMA'
   | 'QUESTION'
   | 'COLON'
+  | 'NULLISH_COALESCING'
   | 'EOF';
 
 interface Token {
@@ -138,6 +142,15 @@ function tokenize(expr: string): Token[] {
     // Skip whitespace
     if (/\s/.test(expr[i])) {
       i++;
+      continue;
+    }
+
+    // Skip // comments
+    if (expr[i] === '/' && expr[i + 1] === '/') {
+      i += 2;
+      while (i < expr.length && expr[i] !== '\n') {
+        i++;
+      }
       continue;
     }
 
@@ -223,9 +236,22 @@ function tokenize(expr: string): Token[] {
       continue;
     }
     const two = expr.slice(i, i + 2);
-    if (['==', '!=', '>=', '<=', '&&', '||', '?.'].includes(two)) {
-      tokens.push({ type: two === '?.' ? 'OPTIONAL_DOT' : 'OP', value: two });
-      i += 2;
+    if (['==', '!=', '>=', '<=', '&&', '||', '?.', '??'].includes(two)) {
+      if (two === '?.') {
+        if (expr[i + 2] === '[') {
+          tokens.push({ type: 'OPTIONAL_LBRACKET', value: '?.[ ' });
+          i += 3;
+        } else {
+          tokens.push({ type: 'OPTIONAL_DOT', value: '?.' });
+          i += 2;
+        }
+      } else if (two === '??') {
+        tokens.push({ type: 'NULLISH_COALESCING', value: '??' });
+        i += 2;
+      } else {
+        tokens.push({ type: 'OP', value: two });
+        i += 2;
+      }
       continue;
     }
 
@@ -235,6 +261,8 @@ function tokenize(expr: string): Token[] {
     if (ch === ')') { tokens.push({ type: 'RPAREN', value: ch }); i++; continue; }
     if (ch === '[') { tokens.push({ type: 'LBRACKET', value: ch }); i++; continue; }
     if (ch === ']') { tokens.push({ type: 'RBRACKET', value: ch }); i++; continue; }
+    if (ch === '{') { tokens.push({ type: 'LBRACE', value: ch }); i++; continue; }
+    if (ch === '}') { tokens.push({ type: 'RBRACE', value: ch }); i++; continue; }
     if (ch === '.') { tokens.push({ type: 'DOT', value: ch }); i++; continue; }
     if (ch === ',') { tokens.push({ type: 'COMMA', value: ch }); i++; continue; }
     if (ch === '?') { tokens.push({ type: 'QUESTION', value: ch }); i++; continue; }
@@ -295,17 +323,29 @@ class Parser {
     return this.parseTernary(context);
   }
 
-  // ternary: logical ? logical : logical
+  // ternary: expr ? expr : expr
   private parseTernary(context: Record<string, unknown>): unknown {
-    const cond = this.parseLogicalOr(context);
+    const cond = this.parseNullishCoalescing(context);
     if (this.peek().type === 'QUESTION') {
       this.consume(); // '?'
-      const consequent = this.parseTernary(context);
+      const consequent = this.parseExpression(context);
       this.expect('COLON');
-      const alternate = this.parseTernary(context);
+      const alternate = this.parseExpression(context);
       return cond ? consequent : alternate;
     }
     return cond;
+  }
+
+  // ?? Nullish Coalescing
+  private parseNullishCoalescing(context: Record<string, unknown>): unknown {
+    let left = this.parseLogicalOr(context);
+    while (this.peek().type === 'NULLISH_COALESCING') {
+      this.consume();
+      const right = this.parseLogicalOr(context);
+      // Nullish check: only fallback if null or undefined
+      left = left ?? right;
+    }
+    return left;
   }
 
   // ||
@@ -416,12 +456,21 @@ class Parser {
         } else {
           obj = undefined;
         }
-      } else if (this.peek().type === 'LBRACKET') {
-        this.consume();
+      } else if (tok.type === 'LBRACKET' || tok.type === 'OPTIONAL_LBRACKET') {
+        const isOptional = this.consume().type === 'OPTIONAL_LBRACKET';
+        if (isOptional && (obj === null || obj === undefined)) {
+          obj = undefined;
+        }
+
         const key = this.parseExpression(context);
         this.expect('RBRACKET');
-        this.checkBlockedProp(String(key));
-        obj = (obj as Record<string, unknown>)?.[String(key)];
+
+        if (obj !== undefined && obj !== null) {
+          this.checkBlockedProp(String(key));
+          obj = (obj as Record<string, unknown>)?.[String(key)];
+        } else {
+          obj = undefined;
+        }
       } else if (this.peek().type === 'LPAREN') {
         this.consume();
         const args: unknown[] = [];
@@ -499,6 +548,45 @@ class Parser {
       }
 
       return context[tok.value];
+    }
+
+    // Array literal: [a, b, c]
+    if (tok.type === 'LBRACKET') {
+      this.consume();
+      const arr: unknown[] = [];
+      while (this.peek().type !== 'RBRACKET' && this.peek().type !== 'EOF') {
+        arr.push(this.parseExpression(context));
+        if (this.peek().type === 'COMMA') this.consume();
+      }
+      this.expect('RBRACKET');
+      return arr;
+    }
+
+    // Object literal: { k: v, k2: v2 }
+    if (tok.type === 'LBRACE') {
+      this.consume();
+      const obj: Record<string, unknown> = {};
+      while (this.peek().type !== 'RBRACE' && this.peek().type !== 'EOF') {
+        let key: string;
+        const keyTok = this.consume();
+        if (keyTok.type === 'IDENT' || keyTok.type === 'STRING') {
+          key = keyTok.value;
+        } else if (keyTok.type === 'LBRACKET') {
+          // Dynamic key: { [expr]: val }
+          key = String(this.parseExpression(context));
+          this.expect('RBRACKET');
+        } else {
+          throw new SafeEvalError(`Expected identifier, string, or [ as object key but got ${keyTok.type}`);
+        }
+
+        this.expect('COLON');
+        const value = this.parseExpression(context);
+        obj[key] = value;
+
+        if (this.peek().type === 'COMMA') this.consume();
+      }
+      this.expect('RBRACE');
+      return obj;
     }
 
     if (tok.type === 'LPAREN') {
