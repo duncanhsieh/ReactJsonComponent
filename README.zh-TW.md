@@ -15,7 +15,9 @@
 ```
 JsonASTNode (來自資料庫 / CMS / 配置)
         ↓
-  ReactJsonRenderer
+  ReactJsonRenderer (高階 CMS 封裝層)
+        ↓
+  ReactJsonRuntime (核心執行引擎)
         ↓
   React 元素樹 (包含 Zustand 狀態、Action 處理程序、運算式綁定)
 ```
@@ -25,7 +27,10 @@ JsonASTNode (來自資料庫 / CMS / 配置)
 - 安全的運算式解析 (不使用 `eval` / `new Function`)。
 - 每個組件實例擁有獨立的 Zustand 狀態作用域 (Scoped State)。
 - Action 註冊表 (Action Registry) 將邏輯保留在代碼中，而非 JSON 裡。
-- 透過 `PureJsonComponent` 和 `createJsonComponent` 建立可重用的 CMS 組件。
+- **自動組件解析 (Auto Resolution)**：在一個 Map 中混合 React 組件與 JSON 模板，自動解析彼此間的引用依賴。
+- **持久化快取**：透過 `WeakMap` 或顯式的 `ComponentRegistry` 在頁面跳轉時保留工廠實例，提升效能。
+- 透過 `PureJsonComponent` 和 `ReactJsonComponent` 建立可重用的 CMS 組件。
+- **$slot** — 子節點插槽：一個特殊的 `type`，用於 `PureJsonComponent` 或 `ReactJsonComponent` 模板中，用來渲染消費者傳入的子組件。
 
 ---
 
@@ -90,31 +95,69 @@ type JsonPropValue =
 
 ---
 
-## 4. `ReactJsonRenderer` — 核心渲染組件
+## 4. `ReactJsonRenderer` — 高階 CMS 渲染組件
+
+`ReactJsonRenderer` 是 CMS 頁面的推薦入口。它會自動解析 JSON 定義組件之間的依賴關係。
 
 ```tsx
 import { ReactJsonRenderer } from 'next-json-component/react';
 
 <ReactJsonRenderer
-  template={myTemplate}       // JsonASTNode | AnalyzedNode
+  template={myTemplate}
   options={{
-    initialState: {},         // 初始 Zustand store 狀態
-    actionRegistry: {},       // 具名的 Action 處理程序
-    components: {},           // 自定義 React 組件表
+    initialState: {},         // 獨立 Zustand store 的初始狀態
+    actionRegistry: {},       // Action 名稱 → 處理函式的映射
+    components: {             // 混合 React + JSON 組件表
+      ...headlessui,          // 原生 React 組件
+      MyTab: {                // JSON 模板定義
+        template: { type: 'button', children: ['{{ props.label }}'] }
+      }
+    },
   }}
   componentProps={{}}         // 可透過 {{ props.xxx }} 存取的外部 Props
 />
 ```
 
-### 屬性 (Props)
+### 自動依賴解析 (Automatic Dependency Resolution)
 
-| Prop | 類型 | 描述 |
-|------|------|-------------|
-| `template` | `JsonASTNode \| AnalyzedNode` | 要渲染的 JSON AST |
-| `options.initialState` | `Record<string, unknown>` | 獨立 Zustand store 的初始狀態 |
-| `options.actionRegistry` | `ActionRegistry` | Action 名稱 → 處理函式的映射 |
-| `options.components` | `Record<string, ComponentType>` | AST 中 `type` 參照的自定義 React 組件 |
-| `componentProps` | `Record<string, unknown>` | 在模板中可透過 `{{ props.xxx }}` 存取 |
+如果你的 JSON 組件之間有互相引用（例如 `MyTabControl` 使用了 `MyTab`），`ReactJsonRenderer` 會自動為你處理好內部的工廠建置與注入。你只需要將它們全部放進 `components` map 即可。
+
+### 全域註冊表快取 (效能優化)
+
+為了避免組件工廠在每次頁面跳轉 (unmount/remount) 時重新建置，請遵循以下最佳實踐：
+
+1.  **穩定引用 (Stable Reference)**：將你的 `components` 物件定義在組件外部或模組作用域。`ReactJsonRenderer` 內部使用 `WeakMap` 來快取工廠實例。
+2.  **顯式註冊表 (Explicit Registry)**：追求極致效能與控制時，使用 `createComponentRegistry` 預先建置註冊表。
+
+```tsx
+// app-registry.ts
+import { createComponentRegistry } from 'next-json-component/react';
+
+export const appRegistry = createComponentRegistry({
+  MyCard: { template: { ... } },
+  ...headlessui
+});
+
+// App.tsx
+<ReactJsonRenderer template={ast} registry={appRegistry} />
+```
+
+---
+
+## 5. `ReactJsonRuntime` — 核心執行引擎
+
+對於需要進階微調或底層控制的場景，你可以直接使用 `ReactJsonRuntime`。它要求 `components` 必須是已經解析完成的 `ComponentType` 物件（工廠實例）。
+
+```tsx
+import { ReactJsonRuntime } from 'next-json-component/react';
+
+<ReactJsonRuntime
+  template={ast}
+  options={{
+    components: { MyCard: PureJsonComponent({ ... }) } // 手動建立工廠
+  }}
+/>
+```
 
 ---
 
@@ -388,14 +431,14 @@ const Title = PureJsonComponent(
 <Title>哈囉世界</Title>
 ```
 
-### `createJsonComponent` — 有狀態工廠
+### `ReactJsonComponent` — 有狀態工廠
 
 從 `JsonASTNode` 創建一個備有 **獨立作用域 Zustand store** 的 React 組件。用於具交互性的 CMS 組件。
 
 ```tsx
-import { createJsonComponent } from 'next-json-component/react';
+import { ReactJsonComponent } from 'next-json-component/react';
 
-const Counter = createJsonComponent(
+const Counter = ReactJsonComponent(
   {
     type: 'div',
     children: [
@@ -508,16 +551,17 @@ const jsx = jsonToJsx(ast);
 
 ```
 消費者 (React/Vite 應用程式)
-  └─ ReactJsonRenderer (React.memo)
-       ├─ createScopedStore()      ← 每個實例獨立的 Zustand store
-       ├─ analyzeTree(template)    ← 標記靜態子樹以便優化
-       ├─ buildRenderContext()     ← { state, setState, props, options }
-       └─ renderNode(ast, ctx)     ← 遞迴 JSON → React.createElement
-            ├─ type === '$slot'    → 回傳 ctx.props.children
-            ├─ $if 檢查            → 若為 falsy 則回傳 null
-            ├─ $each              → 遍歷陣列，建立具 Key 的元素
-            ├─ resolveComponentType() → options.components[type] || HTML 標籤
-            ├─ resolveNodeProps() → 解析每個 Prop 中的 {{ }}
-            │    └─ ActionBinding → resolveHandler() → 綁定事件函式
-            └─ renderChildren()   → 對每個子節點/字串進行遞迴
+  └─ ReactJsonRenderer (高階封裝層)
+       └─ ReactJsonRuntime (核心執行引擎)
+            ├─ createScopedStore()      ← 每個實例獨立的 Zustand store
+            ├─ analyzeTree(template)    ← 標記靜態子樹以便優化
+            ├─ buildRenderContext()     ← { state, setState, props, options }
+            └─ renderNode(ast, ctx)     ← 遞迴 JSON → React.createElement
+                 ├─ type === '$slot'    → 回傳 ctx.props.children
+                 ├─ $if 檢查            → 若為 falsy 則回傳 null
+                 ├─ $each              → 遍歷陣列，建立具 Key 的元素
+                 ├─ resolveComponentType() → options.components[type] || HTML 標籤
+                 ├─ resolveNodeProps() → 解析每個 Prop 中的 {{ }}
+                 │    └─ ActionBinding → resolveHandler() → 綁定事件函式
+                 └─ renderChildren()   → 對每個子節點/字串進行遞迴
 ```

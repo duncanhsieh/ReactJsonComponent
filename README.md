@@ -15,7 +15,9 @@
 ```
 JsonASTNode (from DB / CMS / config)
         ↓
-  ReactJsonRenderer
+  ReactJsonRenderer (High-level CMS Wrapper)
+        ↓
+  ReactJsonRuntime (Core Execution Engine)
         ↓
   React element tree (with Zustand state, action handlers, expression bindings)
 ```
@@ -25,7 +27,9 @@ JsonASTNode (from DB / CMS / config)
 - Safe expression evaluation (no `eval` / `new Function`)
 - Scoped Zustand state per component instance
 - Action Registry keeps logic in code, never in JSON
-- Reusable CMS components via `PureJsonComponent` and `createJsonComponent`
+- **Auto Component Resolution**: Mix React components and JSON templates in one map; dependencies are resolved automatically.
+- **Persistent Caching**: Factories are cached across page navigations via `WeakMap` or explicit `ComponentRegistry`.
+- Reusable CMS components via `PureJsonComponent` and `ReactJsonComponent`
 
 ---
 
@@ -90,31 +94,69 @@ type JsonPropValue =
 
 ---
 
-## 4. `ReactJsonRenderer` — Core Component
+## 4. `ReactJsonRenderer` — High-Level CMS Component
+
+`ReactJsonRenderer` is the recommended entry point for CMS pages. It automatically resolves dependencies between JSON-defined components.
 
 ```tsx
 import { ReactJsonRenderer } from 'next-json-component/react';
 
 <ReactJsonRenderer
-  template={myTemplate}       // JsonASTNode | AnalyzedNode
+  template={myTemplate}
   options={{
     initialState: {},         // Initial Zustand store state
     actionRegistry: {},       // Named action handlers
-    components: {},           // Custom React components by name
+    components: {             // Mixed React + JSON Component Map
+      ...headlessui,          // Native components
+      MyTab: {                // JSON Definition
+        template: { type: 'button', children: ['{{ props.label }}'] }
+      }
+    },
   }}
-  componentProps={{}}         // Props accessible as {{ props.xxx }}
+  componentProps={{}}         // Props accessible as {{ props.username }}
 />
 ```
 
-### Props
+### Automatic Dependency Resolution
 
-| Prop | Type | Description |
-|------|------|-------------|
-| `template` | `JsonASTNode \| AnalyzedNode` | The JSON AST to render |
-| `options.initialState` | `Record<string, unknown>` | Initial state for the scoped Zustand store |
-| `options.actionRegistry` | `ActionRegistry` | Map of action name → handler function |
-| `options.components` | `Record<string, ComponentType>` | Custom React components referenced by `type` in the AST |
-| `componentProps` | `Record<string, unknown>` | Accessible in the template as `{{ props.xxx }}` |
+If you have JSON components that refer to each other (e.g., `MyTabControl` uses `MyTab`), `ReactJsonRenderer` handles the wiring for you. Just put them all in the `components` map.
+
+### Global Registry Caching (Performance)
+
+To prevent component factories from being rebuilt on every page navigation (remount), follow these best practices:
+
+1.  **Stable Reference**: Define your `components` map outside the component or at module scope. `ReactJsonRenderer` uses a internal `WeakMap` to cache factories.
+2.  **Explicit Registry**: For maximum performance and control, pre-build your registry using `createComponentRegistry`.
+
+```tsx
+// app-registry.ts
+import { createComponentRegistry } from 'next-json-component/react';
+
+export const appRegistry = createComponentRegistry({
+  MyCard: { template: { ... } },
+  ...headlessui
+});
+
+// App.tsx
+<ReactJsonRenderer template={ast} registry={appRegistry} />
+```
+
+---
+
+## 5. `ReactJsonRuntime` — Core Engine
+
+For advanced fine-tuning or low-level usage, you can use `ReactJsonRuntime` directly. It requires all `components` to be already-resolved `ComponentType` objects (factories).
+
+```tsx
+import { ReactJsonRuntime } from 'next-json-component/react';
+
+<ReactJsonRuntime
+  template={ast}
+  options={{
+    components: { MyCard: PureJsonComponent({ ... }) } // Manual factory creation
+  }}
+/>
+```
 
 ---
 
@@ -322,7 +364,7 @@ The node is removed from the DOM entirely (not just hidden) when the expression 
 
 ### `$slot` — Children Passthrough
 
-A special `type` used inside `PureJsonComponent` or `createJsonComponent` templates to render the children passed by the consumer:
+A special `type` used inside `PureJsonComponent` or `ReactJsonComponent` templates to render the children passed by the consumer:
 
 ```json
 {
@@ -460,14 +502,14 @@ const InfoCard = PureJsonComponent({
 </InfoCard>
 ```
 
-### `createJsonComponent` — Stateful Factory
+### `ReactJsonComponent` — Stateful Factory
 
 Creates a React component from a `JsonASTNode` backed by a **scoped Zustand store**. For interactive CMS components.
 
 ```tsx
-import { createJsonComponent } from 'next-json-component/react';
+import { ReactJsonComponent } from 'next-json-component/react';
 
-const Counter = createJsonComponent(
+const Counter = ReactJsonComponent(
   {
     type: 'div',
     children: [
@@ -506,7 +548,7 @@ const Counter = createJsonComponent(
 // components/cms-registry.ts
 'use client'; // Required in Next.js; fine to omit in pure React
 
-import { PureJsonComponent, createJsonComponent } from 'next-json-component/react';
+import { PureJsonComponent, ReactJsonComponent } from 'next-json-component/react';
 
 export const Title = PureJsonComponent({
   type: 'h2',
@@ -523,7 +565,7 @@ export const InfoCard = PureJsonComponent({
   ],
 });
 
-export const MiniCounter = createJsonComponent(
+export const MiniCounter = ReactJsonComponent(
   {
     type: 'div',
     children: [
@@ -732,10 +774,25 @@ type SetStateFn = (
 ) => void;
 
 interface ReactJsonComponentOptions {
-  components?: Record<string, ComponentType<Record<string, unknown>>>;
+  components?: Record<string, ComponentMapEntry>;
   actionRegistry?: ActionRegistry;
   initialState?: Record<string, unknown>;
-  // serverActions: Next.js only, not available in ReactJsonRenderer
+}
+
+interface JsonComponentDefinition {
+  template: JsonASTNode;
+  stateful?: boolean;
+  options?: {
+    initialState?: Record<string, unknown>;
+    actionRegistry?: ActionRegistry;
+  };
+}
+
+type ComponentMapEntry = ComponentType<any> | JsonComponentDefinition;
+
+interface ComponentRegistry {
+  readonly __brand: 'ComponentRegistry';
+  readonly components: Record<string, ComponentType<any>>;
 }
 ```
 
@@ -745,16 +802,17 @@ interface ReactJsonComponentOptions {
 
 ```
 Consumer (React/Vite app)
-  └─ ReactJsonRenderer (React.memo)
-       ├─ createScopedStore()      ← isolated Zustand store per instance
-       ├─ analyzeTree(template)    ← marks static subtrees for memoization
-       ├─ buildRenderContext()     ← { state, setState, props, options }
-       └─ renderNode(ast, ctx)     ← recursive JSON → React.createElement
-            ├─ type === '$slot'    → return ctx.props.children
-            ├─ $if check          → return null if falsy
-            ├─ $each              → map over array, create keyed elements
-            ├─ resolveComponentType() → options.components[type] || HTML tag
-            ├─ resolveNodeProps() → resolve {{ }} in each prop value
-            │    └─ ActionBinding → resolveHandler() → bound event function
-            └─ renderChildren()   → recurse for each child node/string
+  └─ ReactJsonRenderer (High-level Wrapper)
+       └─ ReactJsonRuntime (Core Engine)
+            ├─ createScopedStore()      ← isolated Zustand store per instance
+            ├─ analyzeTree(template)    ← marks static subtrees for memoization
+            ├─ buildRenderContext()     ← { state, setState, props, options }
+            └─ renderNode(ast, ctx)     ← recursive JSON → React.createElement
+                 ├─ type === '$slot'    → return ctx.props.children
+                 ├─ $if check          → return null if falsy
+                 ├─ $each              → map over array, create keyed elements
+                 ├─ resolveComponentType() → options.components[type] || HTML tag
+                 ├─ resolveNodeProps() → resolve {{ }} in each prop value
+                 │    └─ ActionBinding → resolveHandler() → bound event function
+                 └─ renderChildren()   → recurse for each child node/string
 ```

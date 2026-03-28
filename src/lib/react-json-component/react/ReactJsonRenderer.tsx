@@ -1,110 +1,174 @@
 /**
  * ReactJsonRenderer.tsx
  *
- * A framework-agnostic React component for rendering JSON AST templates.
- * Designed for use in pure React environments (e.g. Vite + React, CRA)
- * without any Next.js dependency.
+ * High-level CMS renderer with automatic component dependency resolution.
  *
- * Usage:
- *   import { ReactJsonRenderer } from 'next-json-component/react';
+ * Unlike `ReactJsonRuntime`, which requires developers to manually create
+ * component factories and wire up dependencies, `ReactJsonRenderer` accepts
+ * a **mixed** `components` map in `options` where each entry is either:
  *
- *   <ReactJsonRenderer
- *     template={myJsonAst}
- *     options={{
- *       actionRegistry: { increment: (s, set) => set({ count: s.count + 1 }) },
- *       initialState: { count: 0 },
- *     }}
- *   />
+ *   - A native React `ComponentType` (e.g. imported from `@headlessui/react`), OR
+ *   - A `JsonComponentDefinition` object with a JSON `template` and optional options.
+ *
+ * `ReactJsonRenderer` will automatically:
+ *  1. Detect which entries are JSON definitions.
+ *  2. Build `PureJsonComponent` or `ReactJsonComponent` factories (once, via WeakMap cache).
+ *  3. Inject the **full resolved component map** into every JSON factory, so
+ *     inter-component dependencies (e.g. `MyTabControl` using `MyTab`) are
+ *     satisfied without any extra configuration.
+ *
+ * ## Performance: Factory caching across page navigation
+ *
+ * A module-level `WeakMap` caches resolved factory maps. If the same
+ * `components` object reference is passed on re-mount (e.g. after page
+ * navigation), the cache is hit and no factories are recreated.
+ *
+ * For apps with many CMS components, define the `components` map at module
+ * scope (or use `createComponentRegistry()`) to get permanent caching:
+ *
+ * ```tsx
+ * // ✅ Module scope — factories created once for the app lifetime
+ * const components = { ...headlessui, MyCard: { template: {...} } };
+ *
+ * // ✅ Or pre-build explicitly for maximum control
+ * const registry = createComponentRegistry({ ...headlessui, MyCard: {...} });
+ *
+ * function CmsPage({ ast }) {
+ *   // WeakMap hit on every mount after the first
+ *   return <ReactJsonRenderer template={ast} options={{ components }} />;
+ *   // — or —
+ *   return <ReactJsonRenderer template={ast} registry={registry} />;
+ * }
+ * ```
+ *
+ * @example Basic usage
+ * ```tsx
+ * <ReactJsonRenderer
+ *   template={pageJsonAst}
+ *   options={{
+ *     actionRegistry: { increment: (s, set) => set({ count: s.count + 1 }) },
+ *     initialState: { count: 0 },
+ *     components: {
+ *       ...headlessui,
+ *       MyTabControl: { template: {...}, stateful: true },
+ *       MyTab:        { template: {...} },
+ *     },
+ *   }}
+ * />
+ * ```
  */
 
+'use client';
+
 import React, { useMemo } from 'react';
+import type { ComponentType } from 'react';
 import type {
   JsonASTNode,
   AnalyzedNode,
   ReactJsonComponentOptions,
-  RenderContext,
+  ComponentMapEntry,
+  ComponentRegistry,
 } from '../types';
-import { createScopedStore } from '../store/store';
-import { analyzeTree } from '../static-analyzer';
-import { renderNode } from '../node-renderer';
-import { ErrorBoundary } from '../errors/ErrorBoundary';
+import { ReactJsonRuntime, ReactJsonRuntimeProps } from './ReactJsonRuntime';
+import { resolveComponents } from '../component-registry';
 
 // ---------------------------------------------------------------------------
-// Props
+// Module-level WeakMap cache
+// Survives React unmount/remount (page navigation) as long as the same
+// `components` object reference is passed.
 // ---------------------------------------------------------------------------
+
+const factoryCache = new WeakMap<
+  Record<string, ComponentMapEntry>,
+  Record<string, ComponentType<Record<string, unknown>>>
+>();
+
+function resolveComponentsCached(
+  components: Record<string, ComponentMapEntry>,
+): Record<string, ComponentType<Record<string, unknown>>> {
+  if (factoryCache.has(components)) {
+    return factoryCache.get(components)!;
+  }
+  const resolved = resolveComponents(components);
+  factoryCache.set(components, resolved);
+  return resolved;
+}
+
+// ---------------------------------------------------------------------------
+// Public types
+// ---------------------------------------------------------------------------
+
+/**
+ * Extended options for `ReactJsonRenderer` — identical to the runtime options
+ * except `components` now accepts a mixed map (`ComponentMapEntry` per entry).
+ */
+export interface ReactJsonRendererOptions
+  extends Omit<ReactJsonComponentOptions, 'components'> {
+  /**
+   * Mixed component map.
+   * Each value is either a native React component or a `JsonComponentDefinition`.
+   */
+  components?: Record<string, ComponentMapEntry>;
+}
 
 export interface ReactJsonRendererProps {
-  /** The JSON AST template to render. Accepts both raw and pre-analyzed nodes. */
+  /** The top-level JSON AST template to render. */
   template: JsonASTNode | AnalyzedNode;
   /**
-   * Component options.
-   * Note: `serverActions` is not supported in React-only mode.
-   * Use `actionRegistry` for all action handling.
+   * Options including a mixed-format `components` map.
+   * If both `registry` and `options.components` are provided, `registry` takes
+   * precedence (its resolved map is merged with `options.components` after
+   * resolution).
    */
-  options: Omit<ReactJsonComponentOptions, 'serverActions' | '_onStoreReady'>;
-  /** Props passed from the consumer, accessible via `{{ props.xxx }}` in templates. */
+  options?: ReactJsonRendererOptions;
+  /**
+   * A pre-built `ComponentRegistry` from `createComponentRegistry()`.
+   * When provided, skips all resolution steps — the registry's component map
+   * is passed directly to `ReactJsonRuntime`.
+   * Use this for the best performance when navigating between CMS pages.
+   */
+  registry?: ComponentRegistry;
+  /** Props available inside the template as `{{ props.xxx }}`. */
   componentProps?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
-// Static node cache — memoizes subtrees that are known to be static
-// ---------------------------------------------------------------------------
-
-function StaticSubtree({ content }: { content: React.ReactNode }) {
-  return <>{content}</>;
-}
-const MemoizedStaticSubtree = React.memo(StaticSubtree);
-
-// ---------------------------------------------------------------------------
-// Renderer component
+// ReactJsonRenderer component
 // ---------------------------------------------------------------------------
 
 export const ReactJsonRenderer: React.FC<ReactJsonRendererProps> = React.memo(
-  ({ template, options, componentProps = {} }) => {
-    // Create a stable Zustand store once per mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const useStore = useMemo(
-      () => createScopedStore(options.initialState ?? {}),
-      [],
+  ({ template, options = {}, registry, componentProps }) => {
+    const { components, ...restOptions } = options;
+
+    // If `registry` is provided, use its pre-resolved map directly.
+    // Otherwise, resolve the mixed `components` map (using the WeakMap cache).
+    const resolvedComponents = useMemo(() => {
+      if (registry) {
+        // Registry already resolved — merge with any additional components
+        if (components) {
+          return {
+            ...registry.components,
+            ...resolveComponentsCached(components),
+          };
+        }
+        return registry.components;
+      }
+      return components ? resolveComponentsCached(components) : {};
+    }, [registry, components]);
+
+    const runtimeOptions: ReactJsonRuntimeProps['options'] = {
+      ...restOptions,
+      components: resolvedComponents,
+    };
+
+    return (
+      <ReactJsonRuntime
+        template={template}
+        options={runtimeOptions}
+        componentProps={componentProps}
+      />
     );
-
-    const state = useStore();
-
-    // Analyze the template (memoized on template identity).
-    // In pure React there's no Server Component to pre-analyze,
-    // so we do it here.
-    const analyzedTemplate = useMemo(
-      () => analyzeTree(template as JsonASTNode),
-      [template],
-    );
-
-    // Build render context
-    const ctx: RenderContext = useMemo(
-      () => ({
-        state,
-        setState: state.setState,
-        props: componentProps,
-        options: options as ReactJsonComponentOptions,
-      }),
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      [state, componentProps, options],
-    );
-
-    const rendered = renderNode(analyzedTemplate, ctx);
-
-    return <ErrorBoundary>{rendered}</ErrorBoundary>;
   },
 );
 
 ReactJsonRenderer.displayName = 'ReactJsonRenderer';
-
-/**
- * Render a static analyzed node and wrap it in React.memo.
- */
-export function renderStaticNode(
-  node: AnalyzedNode,
-  ctx: RenderContext,
-): React.ReactNode {
-  const content = renderNode(node, ctx);
-  return <MemoizedStaticSubtree key={node.type} content={content} />;
-}

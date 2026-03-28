@@ -122,10 +122,77 @@ export interface ScopedStoreState extends Record<string, unknown> {
 // ---------------------------------------------------------------------------
 
 /**
+ * A JSON-based component definition for use in `ReactJsonRenderer`'s
+ * `components` map. Allows CMS developers to declare components entirely in
+ * JSON, including optional Zustand state, without calling factory functions
+ * manually.
+ *
+ * `ReactJsonRenderer` will automatically call `PureJsonComponent` (when
+ * `stateful` is falsy) or `ReactJsonComponent` (when `stateful: true`) at
+ * mount time, and inject the full resolved component map so inter-component
+ * dependencies are handled automatically.
+ */
+export interface JsonComponentDefinition {
+  /** The JSON AST template that defines this component's UI. */
+  template: JsonASTNode;
+  /**
+   * When true, the component receives a scoped Zustand store.
+   * When false / omitted, a lightweight stateless factory is used.
+   */
+  stateful?: boolean;
+  /** Options forwarded to the underlying factory. */
+  options?: {
+    initialState?: Record<string, unknown>;
+    actionRegistry?: ActionRegistry;
+  };
+}
+
+/**
+ * An entry in the `components` map accepted by `ReactJsonRenderer`.
+ * Can be either:
+ *  - A native React `ComponentType` (e.g. imported from a UI library), **or**
+ *  - A `JsonComponentDefinition` describing the component purely in JSON.
+ */
+export type ComponentMapEntry =
+  | ComponentType<Record<string, unknown>>
+  | JsonComponentDefinition;
+
+/** Type-guard: is this entry a `JsonComponentDefinition`? */
+export function isJsonComponentDefinition(
+  entry: ComponentMapEntry,
+): entry is JsonComponentDefinition {
+  return (
+    typeof entry === 'object' &&
+    entry !== null &&
+    !('$$typeof' in entry) &&   // React components carry $$typeof
+    'template' in entry
+  );
+}
+
+/**
+ * A pre-resolved, stable component registry created by `createComponentRegistry()`.
+ * Contains only native React `ComponentType` values (all JSON definitions have been
+ * compiled into factories). Can be passed directly to `ReactJsonRenderer` via the
+ * `registry` prop, completely bypassing the per-render resolution step.
+ *
+ * Using a branded type prevents accidentally passing a raw mixed map where a
+ * `ComponentRegistry` is expected.
+ */
+export type ComponentRegistry = {
+  readonly __brand: 'ComponentRegistry';
+  readonly components: Record<string, ComponentType<Record<string, unknown>>>;
+};
+
+/**
  * Options passed to ReactJsonComponent (and internally to the hydrator).
  */
 export interface ReactJsonComponentOptions {
-  /** External React components available in the JSON template. */
+  /**
+   * External components available in the JSON template.
+   * `ReactJsonRuntime` / `ReactJsonComponent` / `PureJsonComponent` accept
+   * only resolved `ComponentType` values here.
+   * Use `ReactJsonRenderer` if you want to pass raw `JsonComponentDefinition` entries.
+   */
   components?: Record<string, ComponentType<Record<string, unknown>>>;
   /** Action registry: pre-registered functions keyed by name. */
   actionRegistry?: ActionRegistry;

@@ -1,5 +1,5 @@
 /**
- * createJsonComponent.test.tsx
+ * ReactJsonComponent.test.tsx
  *
  * Unit tests for the stateful CMS component factory (with Zustand).
  */
@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { createJsonComponent } from '../react/createJsonComponent';
+import { ReactJsonComponent } from '../react/ReactJsonComponent';
 import { ReactJsonRenderer } from '../react/ReactJsonRenderer';
 import type { JsonASTNode, ActionRegistry } from '../types';
 
@@ -15,9 +15,9 @@ import type { JsonASTNode, ActionRegistry } from '../types';
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('createJsonComponent — basic rendering', () => {
+describe('ReactJsonComponent — basic rendering', () => {
   it('renders a static template', () => {
-    const Badge = createJsonComponent({
+    const Badge = ReactJsonComponent({
       type: 'span',
       props: { 'data-testid': 'badge' },
       children: ['Badge'],
@@ -28,7 +28,7 @@ describe('createJsonComponent — basic rendering', () => {
   });
 
   it('resolves {{ props.xxx }} from consumer props', () => {
-    const Label = createJsonComponent({
+    const Label = ReactJsonComponent({
       type: 'p',
       props: { 'data-testid': 'label' },
       children: ['{{ props.text }}'],
@@ -39,7 +39,7 @@ describe('createJsonComponent — basic rendering', () => {
   });
 
   it('renders $slot with consumer children', () => {
-    const Panel = createJsonComponent({
+    const Panel = ReactJsonComponent({
       type: 'div',
       props: { 'data-testid': 'panel' },
       children: [{ type: '$slot' }],
@@ -56,14 +56,14 @@ describe('createJsonComponent — basic rendering', () => {
   });
 });
 
-describe('createJsonComponent — internal state & actions', () => {
+describe('ReactJsonComponent — internal state & actions', () => {
   it('manages internal Zustand state', () => {
     const registry: ActionRegistry = {
       increment: (state, setState) =>
         setState({ count: (state.count as number) + 1 }),
     };
 
-    const Counter = createJsonComponent(
+    const Counter = ReactJsonComponent(
       {
         type: 'div',
         children: [
@@ -91,7 +91,7 @@ describe('createJsonComponent — internal state & actions', () => {
       toggle: (state, setState) => setState({ open: !state.open }),
     };
 
-    const Collapsible = createJsonComponent(
+    const Collapsible = ReactJsonComponent(
       {
         type: 'div',
         children: [
@@ -128,13 +128,13 @@ describe('createJsonComponent — internal state & actions', () => {
   });
 });
 
-describe('createJsonComponent — usage in ReactJsonRenderer options.components', () => {
+describe('ReactJsonComponent — usage in ReactJsonRenderer options.components', () => {
   it('can be composed inside a parent ReactJsonRenderer', () => {
     const registry: ActionRegistry = {
       inc: (state, setState) => setState({ n: (state.n as number) + 1 }),
     };
 
-    const Counter = createJsonComponent(
+    const Counter = ReactJsonComponent(
       {
         type: 'div',
         children: [

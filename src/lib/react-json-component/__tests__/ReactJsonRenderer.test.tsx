@@ -1,14 +1,13 @@
 /**
  * ReactJsonRenderer.test.tsx
  *
- * Tests for the framework-agnostic React JSON renderer.
+ * Tests for the CMS-friendly high-level renderer with auto component resolution.
  */
-
 
 import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ReactJsonRenderer } from '../react/ReactJsonRenderer';
-import type { JsonASTNode, ActionRegistry } from '../types';
+import type { JsonASTNode, ActionRegistry, JsonComponentDefinition } from '../types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -18,297 +17,260 @@ function renderTemplate(
   template: JsonASTNode,
   options: Parameters<typeof ReactJsonRenderer>[0]['options'] = {},
 ) {
-  return render(
-    <ReactJsonRenderer template={template} options={options} />,
-  );
+  return render(<ReactJsonRenderer template={template} options={options} />);
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// 1. Native React components pass-through
 // ---------------------------------------------------------------------------
 
-describe('ReactJsonRenderer', () => {
-  // ── Basic rendering ──────────────────────────────────────────────────────
-
-  it('renders a simple static template', () => {
-    const template: JsonASTNode = {
-      type: 'div',
-      props: { 'data-testid': 'root' },
-      children: [
-        { type: 'h1', children: ['Hello, Admin!'] },
-        { type: 'p', children: ['This is a static page.'] },
-      ],
-    };
-
-    renderTemplate(template);
-    expect(screen.getByTestId('root')).toBeDefined();
-    expect(screen.getByText('Hello, Admin!')).toBeDefined();
-    expect(screen.getByText('This is a static page.')).toBeDefined();
-  });
-
-  it('renders nested nodes correctly', () => {
-    const template: JsonASTNode = {
-      type: 'div',
-      children: [
-        {
-          type: 'section',
-          props: { 'data-testid': 'section' },
-          children: [
-            {
-              type: 'span',
-              children: ['Nested content'],
-            },
-          ],
-        },
-      ],
-    };
-
-    renderTemplate(template);
-    expect(screen.getByTestId('section')).toBeDefined();
-    expect(screen.getByText('Nested content')).toBeDefined();
-  });
-
-  // ── Expression interpolation ─────────────────────────────────────────────
-
-  it('resolves {{ state.x }} expressions', () => {
-    const template: JsonASTNode = {
-      type: 'span',
-      props: { 'data-testid': 'greeting' },
-      children: ['Hello, {{ state.name }}!'],
-    };
-
-    renderTemplate(template, { initialState: { name: 'Admin' } });
-    expect(screen.getByTestId('greeting').textContent).toBe('Hello, Admin!');
-  });
-
-  // ── $if conditional rendering ────────────────────────────────────────────
-
-  it('conditionally renders with $if (true)', () => {
-    const template: JsonASTNode = {
-      type: 'div',
-      children: [
-        {
-          type: 'span',
-          $if: '{{ state.show }}',
-          children: ['Visible'],
-        },
-      ],
-    };
-
-    renderTemplate(template, { initialState: { show: true } });
-    expect(screen.getByText('Visible')).toBeDefined();
-  });
-
-  it('conditionally hides with $if (false)', () => {
-    const template: JsonASTNode = {
-      type: 'div',
-      props: { 'data-testid': 'container' },
-      children: [
-        {
-          type: 'span',
-          $if: '{{ state.show }}',
-          children: ['Hidden'],
-        },
-      ],
-    };
-
-    renderTemplate(template, { initialState: { show: false } });
-    const container = screen.getByTestId('container');
-    expect(container.textContent).toBe('');
-  });
-
-  // ── $each list rendering ─────────────────────────────────────────────────
-
-  it('renders lists with $each', () => {
-    const template: JsonASTNode = {
-      type: 'ul',
-      props: { 'data-testid': 'list' },
-      children: [
-        {
-          type: 'li',
-          $each: '{{ state.items }}',
-          $as: 'item',
-          children: ['{{ item }}'],
-        },
-      ],
-    };
-
-    renderTemplate(template, {
-      initialState: { items: ['Apple', 'Banana', 'Cherry'] },
-    });
-
-    expect(screen.getByText('Apple')).toBeDefined();
-    expect(screen.getByText('Banana')).toBeDefined();
-    expect(screen.getByText('Cherry')).toBeDefined();
-  });
-
-  // ── ActionRegistry + State Updates ───────────────────────────────────────
-
-  it('handles action registry and updates state', () => {
-    const registry: ActionRegistry = {
-      increment: (state, setState) => {
-        setState({ count: (state.count as number) + 1 });
-      },
-    };
-
-    const template: JsonASTNode = {
-      type: 'div',
-      children: [
-        {
-          type: 'span',
-          props: { 'data-testid': 'count' },
-          children: ['Count: {{ state.count }}'],
-        },
-        {
-          type: 'button',
-          props: {
-            'data-testid': 'btn',
-            onClick: { action: 'increment' },
-          },
-          children: ['Click'],
-        },
-      ],
-    };
-
-    renderTemplate(template, {
-      actionRegistry: registry,
-      initialState: { count: 0 },
-    });
-
-    expect(screen.getByTestId('count').textContent).toBe('Count: 0');
-
-    fireEvent.click(screen.getByTestId('btn'));
-    expect(screen.getByTestId('count').textContent).toBe('Count: 1');
-
-    fireEvent.click(screen.getByTestId('btn'));
-    expect(screen.getByTestId('count').textContent).toBe('Count: 2');
-  });
-
-  // ── Custom components ────────────────────────────────────────────────────
-
-  it('resolves custom components from options.components', () => {
-    function Badge({ label }: { label?: unknown }) {
+describe('ReactJsonRenderer — native React component pass-through', () => {
+  it('renders a native React component from components map', () => {
+    function Badge({ label }: Record<string, unknown>) {
       return <span data-testid="badge">{String(label)}</span>;
     }
 
     const template: JsonASTNode = {
       type: 'Badge',
-      props: { label: 'Admin' },
+      props: { label: 'CMS Badge' },
     };
 
-    renderTemplate(template, {
-      components: { Badge: Badge as any },
-    });
-
-    expect(screen.getByTestId('badge').textContent).toBe('Admin');
+    renderTemplate(template, { components: { Badge: Badge as any } });
+    expect(screen.getByTestId('badge').textContent).toBe('CMS Badge');
   });
 
-  // ── ErrorBoundary ────────────────────────────────────────────────────────
-
-  it('catches render errors via ErrorBoundary', () => {
-    function Bomb() {
-      throw new Error('Boom!');
-      return null;
+  it('mixes native components with state and actions', () => {
+    function Icon({ name }: Record<string, unknown>) {
+      return <i data-testid="icon">{String(name)}</i>;
     }
 
-    const template: JsonASTNode = {
-      type: 'Bomb',
-    };
-
-    // Should not throw; ErrorBoundary catches it
-    const { container } = renderTemplate(template, {
-      components: { Bomb: Bomb as any },
-    });
-
-    // ErrorBoundary renders fallback or empty — should not crash
-    expect(container).toBeDefined();
-  });
-
-  // ── Immer mutation via ActionRegistry ────────────────────────────────────
-
-  it('updates nested state via Immer draft mutation in action', () => {
     const registry: ActionRegistry = {
-      toggleDone: (_state, setState) => {
-        setState((draft) => {
-          (draft.todo as any).done = !(draft.todo as any).done;
-        });
-      },
+      inc: (state, setState) => setState({ n: (state.n as number) + 1 }),
     };
 
     const template: JsonASTNode = {
       type: 'div',
       children: [
-        {
-          type: 'span',
-          props: { 'data-testid': 'status' },
-          children: ['{{ state.todo.done }}'],
-        },
-        {
-          type: 'button',
-          props: {
-            'data-testid': 'toggle',
-            onClick: { action: 'toggleDone' },
-          },
-          children: ['Toggle'],
-        },
+        { type: 'Icon', props: { name: '{{ state.n }}' } },
+        { type: 'button', props: { 'data-testid': 'btn', onClick: { action: 'inc' } }, children: ['+'] },
       ],
     };
 
     renderTemplate(template, {
+      components: { Icon: Icon as any },
       actionRegistry: registry,
-      initialState: { todo: { text: 'Test', done: false } },
+      initialState: { n: 0 },
     });
 
-    expect(screen.getByTestId('status').textContent).toBe('false');
-
-    fireEvent.click(screen.getByTestId('toggle'));
-    expect(screen.getByTestId('status').textContent).toBe('true');
-
-    fireEvent.click(screen.getByTestId('toggle'));
-    expect(screen.getByTestId('status').textContent).toBe('false');
+    expect(screen.getByTestId('icon').textContent).toBe('0');
+    fireEvent.click(screen.getByTestId('btn'));
+    expect(screen.getByTestId('icon').textContent).toBe('1');
   });
+});
 
-  it('pushes items to an array via Immer draft mutation', () => {
-    const registry: ActionRegistry = {
-      addItem: (_state, setState, _props, text) => {
-        setState((draft) => {
-          (draft.items as string[]).push(text as string);
-        });
-      },
+// ---------------------------------------------------------------------------
+// 2. JSON stateless component (PureJsonComponent auto-factory)
+// ---------------------------------------------------------------------------
+
+describe('ReactJsonRenderer — JSON stateless component', () => {
+  it('auto-creates a PureJsonComponent factory for stateless: false', () => {
+    const components = {
+      Title: {
+        template: {
+          type: 'h1',
+          props: { 'data-testid': 'title' },
+          children: ['{{ props.text }}'],
+        },
+      } satisfies JsonComponentDefinition,
     };
 
     const template: JsonASTNode = {
-      type: 'div',
-      children: [
-        {
-          type: 'span',
-          props: { 'data-testid': 'count' },
-          children: ['{{ state.items.length }}'],
-        },
-        {
-          type: 'button',
-          props: {
-            'data-testid': 'add',
-            onClick: { action: 'addItem', args: ['new-item'] },
-          },
-          children: ['Add'],
-        },
-      ],
+      type: 'Title',
+      props: { text: 'Hello from JSON' },
     };
 
-    renderTemplate(template, {
-      actionRegistry: registry,
-      initialState: { items: ['a', 'b'] },
-    });
+    renderTemplate(template, { components });
+    expect(screen.getByTestId('title').textContent).toBe('Hello from JSON');
+  });
 
+  it('JSON stateless component renders $slot', () => {
+    const components = {
+      Card: {
+        template: {
+          type: 'div',
+          props: { 'data-testid': 'card' },
+          children: [{ type: '$slot' }],
+        },
+      } satisfies JsonComponentDefinition,
+    };
+
+    const template: JsonASTNode = {
+      type: 'Card',
+      children: [{ type: 'p', props: { 'data-testid': 'content' }, children: ['Inner text'] }],
+    };
+
+    renderTemplate(template, { components });
+    expect(screen.getByTestId('card')).toBeDefined();
+    expect(screen.getByTestId('content').textContent).toBe('Inner text');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3. JSON stateful component (ReactJsonComponent auto-factory)
+// ---------------------------------------------------------------------------
+
+describe('ReactJsonRenderer — JSON stateful component', () => {
+  it('auto-creates a ReactJsonComponent factory for stateful: true', () => {
+    const components = {
+      Counter: {
+        stateful: true,
+        options: {
+          initialState: { count: 0 },
+          actionRegistry: {
+            inc: (state: any, setState: any) => setState({ count: state.count + 1 }),
+          },
+        },
+        template: {
+          type: 'div',
+          children: [
+            { type: 'span', props: { 'data-testid': 'count' }, children: ['{{ state.count }}'] },
+            { type: 'button', props: { 'data-testid': 'btn', onClick: { action: 'inc' } }, children: ['+'] },
+          ],
+        },
+      } satisfies JsonComponentDefinition,
+    };
+
+    const template: JsonASTNode = { type: 'Counter' };
+    renderTemplate(template, { components });
+
+    expect(screen.getByTestId('count').textContent).toBe('0');
+    fireEvent.click(screen.getByTestId('btn'));
+    expect(screen.getByTestId('count').textContent).toBe('1');
+    fireEvent.click(screen.getByTestId('btn'));
     expect(screen.getByTestId('count').textContent).toBe('2');
+  });
+});
 
-    fireEvent.click(screen.getByTestId('add'));
-    expect(screen.getByTestId('count').textContent).toBe('3');
+// ---------------------------------------------------------------------------
+// 4. Inter-component dependency resolution
+// ---------------------------------------------------------------------------
+
+describe('ReactJsonRenderer — inter-component dependency resolution', () => {
+  it('resolves A → B → C dependency chain automatically', () => {
+    /**
+     * MyPanel renders MyHeader (JSON) + $slot
+     * MyHeader renders a native Icon + props.title
+     */
+    function Icon({ name }: Record<string, unknown>) {
+      return <i data-testid={`icon-${name}`}>{String(name)}</i>;
+    }
+
+    const components = {
+      Icon: Icon as any,
+      MyHeader: {
+        template: {
+          type: 'div',
+          props: { 'data-testid': 'header' },
+          children: [
+            { type: 'Icon', props: { name: 'star' } },
+            { type: 'span', props: { 'data-testid': 'header-title' }, children: ['{{ props.title }}'] },
+          ],
+        },
+      } satisfies JsonComponentDefinition,
+      MyPanel: {
+        template: {
+          type: 'section',
+          props: { 'data-testid': 'panel' },
+          children: [
+            { type: 'MyHeader', props: { title: 'Panel Title' } },
+            { type: '$slot' },
+          ],
+        },
+      } satisfies JsonComponentDefinition,
+    };
+
+    const template: JsonASTNode = {
+      type: 'MyPanel',
+      children: [{ type: 'p', props: { 'data-testid': 'body' }, children: ['Body content'] }],
+    };
+
+    renderTemplate(template, { components });
+
+    expect(screen.getByTestId('panel')).toBeDefined();
+    expect(screen.getByTestId('header')).toBeDefined();
+    expect(screen.getByTestId('icon-star').textContent).toBe('star');
+    expect(screen.getByTestId('header-title').textContent).toBe('Panel Title');
+    expect(screen.getByTestId('body').textContent).toBe('Body content');
   });
 
-  // ── displayName ──────────────────────────────────────────────────────────
+  it('resolves stateful component that uses a stateless child', () => {
+    const components = {
+      Tag: {
+        template: {
+          type: 'span',
+          props: { 'data-testid': 'tag', className: '{{ props.color }}' },
+          children: ['{{ props.label }}'],
+        },
+      } satisfies JsonComponentDefinition,
+      TagList: {
+        stateful: true,
+        options: { initialState: { active: 'red' } },
+        template: {
+          type: 'div',
+          children: [
+            { type: 'Tag', props: { label: '{{ state.active }}', color: '{{ state.active }}' } },
+          ],
+        },
+      } satisfies JsonComponentDefinition,
+    };
 
+    const template: JsonASTNode = { type: 'TagList' };
+    renderTemplate(template, { components });
+    expect(screen.getByTestId('tag').textContent).toBe('red');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5. Mixed React + JSON components
+// ---------------------------------------------------------------------------
+
+describe('ReactJsonRenderer — mixed React + JSON components', () => {
+  it('can compose native and JSON components together', () => {
+    function Divider() {
+      return <hr data-testid="divider" />;
+    }
+
+    const components = {
+      Divider: Divider as any,
+      Section: {
+        template: {
+          type: 'div',
+          props: { 'data-testid': 'section' },
+          children: [
+            { type: 'Divider' },
+            { type: '$slot' },
+          ],
+        },
+      } satisfies JsonComponentDefinition,
+    };
+
+    const template: JsonASTNode = {
+      type: 'Section',
+      children: [{ type: 'p', props: { 'data-testid': 'text' }, children: ['Hello CMS'] }],
+    };
+
+    renderTemplate(template, { components });
+    expect(screen.getByTestId('section')).toBeDefined();
+    expect(screen.getByTestId('divider')).toBeDefined();
+    expect(screen.getByTestId('text').textContent).toBe('Hello CMS');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. displayName
+// ---------------------------------------------------------------------------
+
+describe('ReactJsonRenderer — displayName', () => {
   it('has the correct displayName', () => {
     expect(ReactJsonRenderer.displayName).toBe('ReactJsonRenderer');
   });

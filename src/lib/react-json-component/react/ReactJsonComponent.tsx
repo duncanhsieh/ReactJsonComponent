@@ -1,19 +1,21 @@
 /**
- * createJsonComponent.tsx
+ * ReactJsonComponent.tsx
  *
  * A full-featured component factory with internal Zustand state.
  *
  * Converts a `JsonASTNode` template into a React.FC backed by a scoped
  * Zustand store, action registry, and the full expression resolver.
  *
+ * It internally utilizes the `ReactJsonRuntime` to manage state and rendering.
+ *
  * Suitable for CMS components that need internal interactive state
  * (e.g. a collapsible panel, a local counter, a tab group).
  *
  * The produced component can be used in `options.components` of both
- * `ReactJsonRenderer` and `ReactJsonComponent`.
+ * `ReactJsonRuntime` and `ReactJsonComponent`.
  *
  * Usage:
- *   const Counter = createJsonComponent(
+ *   const Counter = ReactJsonComponent(
  *     {
  *       type: 'div',
  *       children: [
@@ -31,7 +33,7 @@
  *   );
  *
  *   // In a page template:
- *   <ReactJsonRenderer
+ *   <ReactJsonRuntime
  *     template={{ type: 'Counter', children: ['Label from outside'] }}
  *     options={{ components: { Counter } }}
  *   />
@@ -42,18 +44,18 @@
 
 import type { ComponentType } from 'react';
 import type { JsonASTNode, ReactJsonComponentOptions } from '../types';
-import { ReactJsonRenderer } from './ReactJsonRenderer';
+import { ReactJsonRuntime } from './ReactJsonRuntime';
 
 // ---------------------------------------------------------------------------
 // Options
 // ---------------------------------------------------------------------------
 
 /**
- * Options forwarded to the internal `ReactJsonRenderer`.
+ * Options forwarded to the internal `ReactJsonRuntime`.
  * `serverActions` and `_onStoreReady` are excluded — they are Next.js–specific
  * and not applicable to a standalone component factory.
  */
-export type CreateJsonComponentOptions = Omit<
+export type ReactJsonComponentFactoryOptions = Omit<
   ReactJsonComponentOptions,
   'serverActions' | '_onStoreReady'
 >;
@@ -74,13 +76,13 @@ export type CreateJsonComponentOptions = Omit<
  * @param defaultOptions - Default options (state, registry, components…).
  * @returns              A React.FC that renders the template.
  */
-export function createJsonComponent(
+export function ReactJsonComponent(
   template: JsonASTNode,
-  defaultOptions: CreateJsonComponentOptions = {},
+  defaultOptions: ReactJsonComponentFactoryOptions = {},
 ): ComponentType<Record<string, unknown>> {
   function Component(props: Record<string, unknown>) {
     return (
-      <ReactJsonRenderer
+      <ReactJsonRuntime
         template={template}
         options={defaultOptions}
         componentProps={props}
@@ -88,7 +90,7 @@ export function createJsonComponent(
     );
   }
 
-  Component.displayName = 'JsonComponent';
+  Component.displayName = 'ReactJsonComponent';
 
   return Component;
 }

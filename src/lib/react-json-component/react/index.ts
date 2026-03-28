@@ -10,15 +10,19 @@
  *   import { ReactJsonRenderer } from '@/lib/next-json-component/react';
  */
 
-// Main component
+// High-level CMS renderer (auto component resolution)
 export { ReactJsonRenderer } from './ReactJsonRenderer';
-export type { ReactJsonRendererProps } from './ReactJsonRenderer';
+export type { ReactJsonRendererProps, ReactJsonRendererOptions } from './ReactJsonRenderer';
+
+// Runtime (stateful execution engine)
+export { ReactJsonRuntime } from './ReactJsonRuntime';
+export type { ReactJsonRuntimeProps } from './ReactJsonRuntime';
 
 // Component factories
 export { PureJsonComponent } from './PureJsonComponent';
 export type { PureJsonComponentOptions } from './PureJsonComponent';
-export { createJsonComponent } from './createJsonComponent';
-export type { CreateJsonComponentOptions } from './createJsonComponent';
+export { ReactJsonComponent } from './ReactJsonComponent';
+export type { ReactJsonComponentFactoryOptions } from './ReactJsonComponent';
 
 // Types
 export type {
@@ -32,7 +36,10 @@ export type {
   ScopedStoreState,
   ReactJsonComponentOptions,
   RenderContext,
+  JsonComponentDefinition,
+  ComponentMapEntry,
 } from '../types';
+export { isJsonComponentDefinition } from '../types';
 
 // Core utilities (for advanced usage)
 export { analyzeTree, analyzeNode, isStaticNode } from '../static-analyzer';
@@ -44,3 +51,6 @@ export {
 export { safeEval, SafeEvalError } from '../safe-evaluator';
 export { resolveExpression, isExpression } from '../expression-resolver';
 export { JsonASTNodeSchema, JsonPropValueSchema, ActionBindingSchema } from '../schema';
+
+// Component registry (for pre-building stable component registries)
+export { createComponentRegistry } from '../component-registry';
