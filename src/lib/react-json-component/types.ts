@@ -201,6 +201,11 @@ export interface ReactJsonComponentOptions {
   /** Initial state for the scoped store. */
   initialState?: Record<string, unknown>;
   /**
+   * External global variables (libraries, utilities, etc.) available in all
+   * template expressions ({{ expr }}).
+   */
+  globals?: Record<string, unknown>;
+  /**
    * Internal callback — called by ClientJsonHydrator once it creates its
    * Zustand store, giving ServerActionHydrator a stable reference to push
    * `_actions` state changes into without causing re-render loops.

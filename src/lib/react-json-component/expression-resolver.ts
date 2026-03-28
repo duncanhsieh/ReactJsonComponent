@@ -42,6 +42,7 @@ function buildEvalContext(ctx: RenderContext): Record<string, unknown> {
     props: ctx.props,
     setState: ctx.setState,
     context: ctx.contexts ?? {}, // Allows {{ context.xxx }}
+    ...(ctx.options.globals ?? {}), // Global libraries/utilities
     ...(ctx.loopVars ?? {}),
   };
 }

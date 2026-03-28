@@ -70,6 +70,7 @@ export function PureJsonComponent(
       props,
       options: {
         components: options.components,
+        globals: (options as any).globals, // Forward globals if present
       },
     };
 

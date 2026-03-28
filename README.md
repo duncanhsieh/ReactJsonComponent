@@ -37,14 +37,14 @@ JsonASTNode (from DB / CMS / config)
 
 ```bash
 # inside your project
-npm install next-json-component
+npm install react-json-component
 ```
 
 ```tsx
 // React-only entry point (no Next.js dependency)
-import { ReactJsonRenderer } from 'next-json-component/react';
+import { ReactJsonRenderer } from 'react-json-component/react';
 // or for local in-repo development:
-import { ReactJsonRenderer } from '@/lib/next-json-component/react';
+import { ReactJsonRenderer } from '@/lib/react-json-component/react';
 ```
 
 ---
@@ -99,7 +99,7 @@ type JsonPropValue =
 `ReactJsonRenderer` is the recommended entry point for CMS pages. It automatically resolves dependencies between JSON-defined components.
 
 ```tsx
-import { ReactJsonRenderer } from 'next-json-component/react';
+import { ReactJsonRenderer } from 'react-json-component/react';
 
 <ReactJsonRenderer
   template={myTemplate}
@@ -130,7 +130,7 @@ To prevent component factories from being rebuilt on every page navigation (remo
 
 ```tsx
 // app-registry.ts
-import { createComponentRegistry } from 'next-json-component/react';
+import { createComponentRegistry } from 'react-json-component/react';
 
 export const appRegistry = createComponentRegistry({
   MyCard: { template: { ... } },
@@ -141,6 +141,31 @@ export const appRegistry = createComponentRegistry({
 <ReactJsonRenderer template={ast} registry={appRegistry} />
 ```
 
+### Global Library Injection (New)
+
+You can inject libraries (lodash, date-fns, etc.) or custom utilities globally into all template expressions. These variables are accessible directly in `{{ }}`.
+
+```tsx
+import _ from 'lodash';
+import { ReactJsonRenderer } from 'react-json-component/react';
+
+<ReactJsonRenderer
+  template={ast}
+  options={{
+    globals: { _: _ }, // Inject lodash as '_'
+    components: { ... }
+  }}
+/>
+```
+
+Template usage:
+```json
+{ "type": "h1", "children": ["{{ _.upperCase(props.title) }}"] }
+```
+
+> [!TIP]
+> `createComponentRegistry` also accepts `globals` as a second argument, ensuring they are baked into the pre-resolved factories.
+
 ---
 
 ## 5. `ReactJsonRuntime` — Core Engine
@@ -148,7 +173,7 @@ export const appRegistry = createComponentRegistry({
 For advanced fine-tuning or low-level usage, you can use `ReactJsonRuntime` directly. It requires all `components` to be already-resolved `ComponentType` objects (factories).
 
 ```tsx
-import { ReactJsonRuntime } from 'next-json-component/react';
+import { ReactJsonRuntime } from 'react-json-component/react';
 
 <ReactJsonRuntime
   template={ast}
@@ -253,7 +278,7 @@ Actions are **pre-registered JavaScript functions**. The JSON template only stor
 ### Registering Actions
 
 ```typescript
-import type { ActionRegistry } from 'next-json-component/react';
+import type { ActionRegistry } from 'react-json-component/react';
 
 const registry: ActionRegistry = {
   // (state, setState, props, ...args, ...eventArgs) => void | Promise<void>
@@ -420,7 +445,7 @@ When an AST node declares a `contextName`, its `props.value` is placed into the 
 
 ```tsx
 import { createContext } from 'react';
-import { ReactJsonRenderer } from 'next-json-component/react';
+import { ReactJsonRenderer } from 'react-json-component/react';
 
 export const ThemeContext = createContext('light');
 
@@ -463,7 +488,7 @@ const App = () => (
 Creates a React component from a `JsonASTNode` with **no Zustand store**. Ideal for purely presentational CMS components.
 
 ```tsx
-import { PureJsonComponent } from 'next-json-component/react';
+import { PureJsonComponent } from 'react-json-component/react';
 
 const Title = PureJsonComponent(
   {
@@ -507,7 +532,7 @@ const InfoCard = PureJsonComponent({
 Creates a React component from a `JsonASTNode` backed by a **scoped Zustand store**. For interactive CMS components.
 
 ```tsx
-import { ReactJsonComponent } from 'next-json-component/react';
+import { ReactJsonComponent } from 'react-json-component/react';
 
 const Counter = ReactJsonComponent(
   {
@@ -548,7 +573,7 @@ const Counter = ReactJsonComponent(
 // components/cms-registry.ts
 'use client'; // Required in Next.js; fine to omit in pure React
 
-import { PureJsonComponent, ReactJsonComponent } from 'next-json-component/react';
+import { PureJsonComponent, ReactJsonComponent } from 'react-json-component/react';
 
 export const Title = PureJsonComponent({
   type: 'h2',
@@ -601,7 +626,7 @@ const pageTemplate: JsonASTNode = {
 
 ```tsx
 // App.tsx
-import { ReactJsonRenderer } from 'next-json-component/react';
+import { ReactJsonRenderer } from 'react-json-component/react';
 import { Title, InfoCard, MiniCounter } from './cms-registry';
 
 export function App() {
@@ -621,8 +646,8 @@ export function App() {
 ## 12. Full Working Example — Counter + Todo
 
 ```tsx
-import { ReactJsonRenderer } from 'next-json-component/react';
-import type { JsonASTNode, ActionRegistry } from 'next-json-component/react';
+import { ReactJsonRenderer } from 'react-json-component/react';
+import type { JsonASTNode, ActionRegistry } from 'react-json-component/react';
 
 const template: JsonASTNode = {
   type: 'div',
@@ -719,7 +744,7 @@ export function App() {
 The library ships two-way converters for development workflow:
 
 ```typescript
-import { jsxToJson, jsonToJsx } from 'next-json-component';
+import { jsxToJson, jsonToJsx } from 'react-json-component';
 
 // Convert JSX string to JsonASTNode
 const ast = jsxToJson(`
@@ -738,7 +763,7 @@ const jsx = jsonToJsx(ast);
 ## 14. Type Reference
 
 ```typescript
-// Core types (all exported from 'next-json-component/react' and 'next-json-component')
+// Core types (all exported from 'react-json-component/react' and 'react-json-component')
 
 interface JsonASTNode {
   type: string;

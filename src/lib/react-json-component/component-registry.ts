@@ -33,7 +33,6 @@ import type {
   ComponentMapEntry,
   ComponentRegistry,
   JsonASTNode,
-  ActionRegistry,
 } from './types';
 import { isJsonComponentDefinition } from './types';
 
@@ -57,6 +56,7 @@ import { ReactJsonComponent } from './react/ReactJsonComponent';
  */
 export function resolveComponents(
   components: Record<string, ComponentMapEntry>,
+  globals?: Record<string, unknown>,
 ): Record<string, ComponentType<Record<string, unknown>>> {
   const resolved: Record<string, ComponentType<Record<string, unknown>>> = {};
 
@@ -74,14 +74,14 @@ export function resolveComponents(
       const factoryOptions = {
         ...(entry.options ?? {}),
         components: resolved,
+        globals, // Inject global libraries/utilities into the factory
       };
       resolved[name] = entry.stateful
-        ? ReactJsonComponent(entry.template as JsonASTNode, factoryOptions as {
-            initialState?: Record<string, unknown>;
-            actionRegistry?: ActionRegistry;
-            components?: Record<string, ComponentType<Record<string, unknown>>>;
-          })
-        : PureJsonComponent(entry.template as JsonASTNode, { components: resolved });
+        ? ReactJsonComponent(entry.template as JsonASTNode, factoryOptions as any)
+        : PureJsonComponent(entry.template as JsonASTNode, {
+            components: resolved,
+            globals,
+          } as any);
     }
   }
 
@@ -104,8 +104,9 @@ export function resolveComponents(
  */
 export function createComponentRegistry(
   components: Record<string, ComponentMapEntry>,
+  globals?: Record<string, unknown>,
 ): ComponentRegistry {
-  const resolved = resolveComponents(components);
+  const resolved = resolveComponents(components, globals);
   return {
     __brand: 'ComponentRegistry',
     components: resolved,

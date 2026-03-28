@@ -5,9 +5,9 @@
  * Does NOT require Next.js as a dependency.
  *
  * Usage:
- *   import { ReactJsonRenderer } from 'next-json-component/react';
+ *   import { ReactJsonRenderer } from 'react-json-component/react';
  *   // or for local development:
- *   import { ReactJsonRenderer } from '@/lib/next-json-component/react';
+ *   import { ReactJsonRenderer } from '@/lib/react-json-component/react';
  */
 
 // High-level CMS renderer (auto component resolution)

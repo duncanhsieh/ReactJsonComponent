@@ -80,17 +80,26 @@ import { resolveComponents } from '../component-registry';
 
 const factoryCache = new WeakMap<
   Record<string, ComponentMapEntry>,
-  Record<string, ComponentType<Record<string, unknown>>>
+  {
+    globals: Record<string, unknown> | undefined;
+    resolved: Record<string, ComponentType<Record<string, unknown>>>;
+  }
 >();
 
 function resolveComponentsCached(
   components: Record<string, ComponentMapEntry>,
+  globals?: Record<string, unknown>,
 ): Record<string, ComponentType<Record<string, unknown>>> {
-  if (factoryCache.has(components)) {
-    return factoryCache.get(components)!;
+  const cached = factoryCache.get(components);
+
+  // If found in cache AND globals reference is the same, use it.
+  if (cached && cached.globals === globals) {
+    return cached.resolved;
   }
-  const resolved = resolveComponents(components);
-  factoryCache.set(components, resolved);
+
+  // Otherwise (re-)resolve and update cache.
+  const resolved = resolveComponents(components, globals);
+  factoryCache.set(components, { globals, resolved });
   return resolved;
 }
 
@@ -148,13 +157,13 @@ export const ReactJsonRenderer: React.FC<ReactJsonRendererProps> = React.memo(
         if (components) {
           return {
             ...registry.components,
-            ...resolveComponentsCached(components),
+            ...resolveComponentsCached(components, restOptions.globals),
           };
         }
         return registry.components;
       }
-      return components ? resolveComponentsCached(components) : {};
-    }, [registry, components]);
+      return components ? resolveComponentsCached(components, restOptions.globals) : {};
+    }, [registry, components, restOptions.globals]);
 
     const runtimeOptions: ReactJsonRuntimeProps['options'] = {
       ...restOptions,
